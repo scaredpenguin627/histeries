@@ -1,0 +1,9 @@
+name: Nightly
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+jobs:
+  # Phase 0 stub. Phase 1 adds memory, replay, save/load, and performance jobs.
+  nightly:
+    uses: ./.github/workflows/pr.yml

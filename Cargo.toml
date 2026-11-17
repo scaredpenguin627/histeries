@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "xtask",
+    "crates/hex",
+    "crates/rules-core",
+    "crates/ruleset",
+    "crates/sim",
+    "crates/ai",
+    "crates/net",
+    "crates/mcp",
+    "crates/cli",
+    "crates/client",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.100.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = "warn"

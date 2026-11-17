@@ -1,37 +1,52 @@
 # Histeries roadmap
 
-The current task is the first unchecked box below. Each task carries a class (AGENTS.md section 11): **A** architecture-critical, **B** core implementation, **C** routine. Tick a box in the same change that completes the task. The Phase 0 bootstrap breaks Phase 1 into PR-sized tasks and adds them here.
+The current task is the first unchecked box. Each task carries a class from `AGENTS.md` section 11. Tick a box in the same change that completes it.
 
 ## Phase 0 — Bootstrap
-Done when the scaffold exists, the docs set and ADR-0001…0005 (Proposed) are written, and `cargo xtask layers` and `cargo xtask ci-fast` are green.
-- [ ] P0-01 (B) Cargo workspace with nine empty crates, toolchain pins, rustfmt/clippy/deny/about configs, editor and VCS hygiene files
-- [ ] P0-02 (A) `cargo xtask layers`: dependency direction, no windowing/GPU crate below `client`, no `-sys` crate below `client` without an allow-list entry; with tests
-- [ ] P0-03 (B) `cargo xtask ci-fast` and the GitHub workflows (pr, nightly, weekly, release; nightly and weekly may start as stubs)
-- [ ] P0-04 (C) Docs: ARCHITECTURE, CLEANROOM, scorecard, budgets, tooling, assets
-- [ ] P0-05 (C) Repository files: README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, ATTRIBUTION, licenses, templates
-- [ ] P0-06 (A) ADR-0001…0005 as Proposed: topology trait shape and coordinate policy; RNG; fixed-point format; entity storage; ruleset and modifier language
-- [ ] P0-07 (maintainer) Review the bootstrap PR with a different model, accept or amend the ADRs, republish the Codex environment
+
+Done when the scaffold, docs, five proposed ADRs, and both xtask gates are present.
+
+- [x] P0-01 (B) Cargo workspace with nine crates, pinned toolchain, configs, editor and VCS hygiene files
+- [x] P0-02 (A) `cargo xtask layers` with dependency-direction checks and tests
+- [x] P0-03 (B) `cargo xtask ci-fast` plus PR, nightly, weekly, and release workflows
+- [x] P0-04 (C) Architecture, clean-room, scorecard, budgets, tooling, and assets docs
+- [x] P0-05 (C) Repository metadata, licenses, contribution policy, templates, and attribution
+- [x] P0-06 (A) ADR-0001 through ADR-0005, each Proposed
+- [ ] P0-07 (maintainer) Review the bootstrap PR with a different model, accept or amend the ADRs, and republish the Codex environment
 
 ## Phase 1 — Headless base game
-Scope: ruleset-defined map generation (continents, terrain, features, rivers, resources); units (terrain costs, roads, ZOC, one military and one civilian per tile, melee and ranged combat, healing, a small promotion tree, barbarians); cities (founding, growth with housing-style caps, production queue, 3–4 district types with adjacency, about 12 buildings, builders with charges); small tech and civic trees (about 25 nodes each) and policy slots; 2–8 players; domination and science victories; `histeries new|step|run|replay|map` with an ASCII dump; versioned save/load; a CLI map/scenario editor (`editor.*` commands); a minimal `histeries mcp` (list, dispatch, observe).
 
-Definition of done:
-- 1,000 self-play games over random seeds with zero panics;
-- identical per-turn hashes at 1 vs 8 threads and across save/load;
-- nightly memory gate met (baseline at turn 100; bytes per live entity and slope; reload comparison);
-- the three-layer AI beats `greedy` in at least 75% of games, and every military unit in contact with an enemy receives an explicit order each turn;
-- OHOS and wasm32 `cargo check` green; fast gate under 15 minutes; scorecard published.
+The first implementation phase is split into PR-sized work. Class A tasks are architecture-critical, class B tasks are core implementation, and class C tasks are routine or data work.
 
-Tasks: *to be written by the bootstrap session.*
+- [ ] P1-01 (A) Implement `TileTopology`, `FlatHex`, graph distance, rings, areas, lines, and topology invariants
+- [ ] P1-02 (A) Add fixed-point arithmetic, named RNG streams, and deterministic state hashing
+- [ ] P1-03 (B) Add rules-core entities, modifiers, yields, and property tests
+- [ ] P1-04 (B) Load validated TOML rulesets and ship the base data tables
+- [ ] P1-05 (A) Build simulation state, command registry, observations, events, serialization, and replay
+- [ ] P1-06 (B) Add map generation, terrain, features, rivers, resources, and the editor command family
+- [ ] P1-07 (B) Add units, movement costs, roads, zones of control, combat, healing, promotions, and barbarians
+- [ ] P1-08 (B) Add cities, growth caps, production, districts, buildings, and builders
+- [ ] P1-09 (C) Add technology and civic data, policy slots, domination and science victory checks
+- [ ] P1-10 (C) Add CLI `new`, `step`, `run`, `replay`, `map`, and scenario-editor commands
+- [ ] P1-11 (A) Add strategic, operational, and tactical AI over the observation API
+- [ ] P1-12 (A) Add determinism, replay, memory, and performance gates for 2–8 player self-play
+
+Phase 1 is complete after 1,000 random-seed self-play games have zero panics, hashes match across thread counts and save/load, the memory gate passes, the three-layer AI beats `greedy` in at least 75% of games, every military unit in contact receives an explicit order, and OHOS, wasm32, and fast-gate budgets are green.
 
 ## Phase 2 — AI depth and MCP
-Full three-layer AI; tournament harness with Elo and significance; complete MCP server; an LLM agent plays a complete game through MCP alone (acceptance test); fixture-driven parity scorecard.
+
+- [ ] Complete the three-layer AI and tournament harness with Elo and significance reporting
+- [ ] Complete the MCP server and its seat-scoped session protocol
+- [ ] Add an acceptance test where an LLM agent completes a two-player game through MCP alone
 
 ## Phase 3 — 2D client
-wgpu/egui/winit client, GUI map editor, mod-manager UI, WASM plugin ABI (`wasmi`), web build.
+
+- [ ] Add the wgpu, egui, and winit presenter, GUI editor, mod-manager UI, WASM plugin ABI, and web build
 
 ## Phase 4 — Lockstep multiplayer
-`net` as a second transport over the same commands and hashes; desync reports; hotseat and LAN.
 
-## Phase 5+ — Later
-3D client, HarmonyOS NEXT PC shell, Geodesic topology, late-game ages and off-map theatres.
+- [ ] Add the second transport, desync reports, hotseat, and LAN sessions
+
+## Phase 5+
+
+- [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres

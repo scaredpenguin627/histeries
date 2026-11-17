@@ -12,7 +12,7 @@ Checked against OpenAI's Codex documentation and by tests on 2026-10-24. **Verif
 | 4 | Skills stored in the repository (`.agents/skills/<name>/SKILL.md`) are available in cloud tasks. | Verified |
 | 5 | `.codex/hooks.json` loads in cloud tasks and can be trusted. Project hooks run only after review (`/hooks`) and only when the project `.codex/` layer is trusted. | Unverified (smoke test 6). Nothing depends on it |
 | 6 | Custom agents in `.codex/agents/*.toml` work in cloud tasks. Docs describe them for local clients; an agent file cannot set its own sandbox. | Unverified (smoke test 7). Nothing depends on it |
-| 7 | A cloud task's result reaches GitHub (the PR button) correctly when the checkout is a colocated jj repository. | Unverified (smoke test 4). Fallback F1 below |
+| 7 | A cloud task's result reaches GitHub (the PR button) correctly when the checkout is a non-colocated jj repository. | Unverified (smoke test 4). Fallback F1 below |
 | 8 | `rustup target add` for the OHOS and wasm32 targets works in the VM. The targets exist in rustc and are Tier 2 (OHOS: with host tools; wasm32-unknown-unknown: without). | Targets verified; installing from inside Codex unverified |
 | 9 | `cargo check --target *-linux-ohos` needs no OpenHarmony SDK while the checked crates are pure Rust (linking is what needs the SDK). | Unverified: not run yet (the build sandbox could not reach static.rust-lang.org) |
 
@@ -34,7 +34,7 @@ Plan size matters: Plus and Edu Plus get 2 vCPU, 8 GiB RAM and 8 GiB disk; Pro, 
 
 ## 4. Delivery: how work reaches GitHub
 
-**Path A (default, nothing to configure).** The agent leaves its work as described jj commits and closes with `jj new`. In a colocated repository the git view then shows those commits on a detached HEAD with a clean tree (tested: `git log` lists them, `git diff main..HEAD` shows the files, `git status` is clean, and `.jj/` is self-ignored). The maintainer uses Codex's own PR button. No credential ever enters the workspace.
+**Path A (default, nothing to configure).** The agent leaves its work as described jj commits and closes with `jj new`. In a non-colocated repository the described jj commits remain in the workspace and can be pushed with the task bookmark. The maintainer reviews the resulting GitHub pull request. No credential is stored in the workspace.
 
 **Fallback F1 (only if smoke test 4 shows an empty PR).** The harness may look only at uncommitted changes. Then end tasks with this instead of `jj new`:
 `jj squash --from 'main@origin..@-' --into @ -m "<summary>"`
@@ -66,3 +66,4 @@ Republish after changing: any pin in `scripts/codex-cloud-setup.sh`; the `channe
 | 4 jj and PR | PR contains `.jj` files | Add `.jj/` to `.gitignore` (it is self-ignored, so this should not happen). |
 | 5 git refusal | the agent ran `git` | AGENTS.md is the control; hooks may not be active. Re-prompt with section 10 quoted; if repeated, add the rule to the task prompt. |
 | 6 hooks / 7 subagent | not available | Nothing to do. The workflow does not use them. |
+

@@ -1,0 +1,8 @@
+[build]
+target-dir = "target"
+
+[term]
+color = "never"
+
+[alias]
+xtask = "run --package histeries-xtask --bin xtask --"
