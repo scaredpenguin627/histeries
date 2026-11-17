@@ -1,0 +1,42 @@
+{
+  "description": "Histeries guardrails. Optional: Codex runs project hooks only after they are reviewed and trusted (/hooks). AGENTS.md never depends on them. Each command fails open (exit 0) when the repository, the script or python3 cannot be found, because a hook that cannot start must never block a tool call.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "r=\"$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)\"; s=\"$r/.codex/hooks/session_context.py\"; if [ -n \"$r\" ] && [ -f \"$s\" ] && command -v python3 >/dev/null 2>&1; then exec python3 \"$s\"; fi; exit 0",
+            "timeout": 20,
+            "statusMessage": "Loading Histeries state"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "r=\"$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)\"; s=\"$r/.codex/hooks/pre_compact.py\"; if [ -n \"$r\" ] && [ -f \"$s\" ] && command -v python3 >/dev/null 2>&1; then exec python3 \"$s\"; fi; exit 0",
+            "timeout": 20,
+            "statusMessage": "Saving state snapshot"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "r=\"$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null)\"; s=\"$r/.codex/hooks/guard_git.py\"; if [ -n \"$r\" ] && [ -f \"$s\" ] && command -v python3 >/dev/null 2>&1; then exec python3 \"$s\"; fi; exit 0",
+            "timeout": 10,
+            "statusMessage": "Checking VCS policy"
+          }
+        ]
+      }
+    ]
+  }
+}
