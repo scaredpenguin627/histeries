@@ -4,21 +4,21 @@ The current task is the first unchecked box. Each task carries a class from `AGE
 
 ## Phase 0 — Bootstrap
 
-Done when the scaffold, docs, five proposed ADRs, and both xtask gates are present.
+Done when the scaffold, docs, five accepted ADRs, and both xtask gates are present.
 
 - [x] P0-01 (B) Cargo workspace with nine crates, pinned toolchain, configs, editor and VCS hygiene files
 - [x] P0-02 (A) `cargo xtask layers` with dependency-direction checks and tests
 - [x] P0-03 (B) `cargo xtask ci-fast` plus PR, nightly, weekly, and release workflows
 - [x] P0-04 (C) Architecture, clean-room, scorecard, budgets, tooling, and assets docs
 - [x] P0-05 (C) Repository metadata, licenses, contribution policy, templates, and attribution
-- [x] P0-06 (A) ADR-0001 through ADR-0005, each Proposed
-- [ ] P0-07 (maintainer) Review the bootstrap PR with a different model, accept or amend the ADRs, and republish the Codex environment
+- [x] P0-06 (A) ADR-0001 through ADR-0005, each Accepted by the maintainer
+- [x] P0-07 (maintainer) Review the bootstrap PR, accept ADR-0001 through ADR-0005, and republish the Codex environment
 
 ## Phase 1 — Headless base game
 
 The first implementation phase is split into PR-sized work. Class A tasks are architecture-critical, class B tasks are core implementation, and class C tasks are routine or data work.
 
-- [ ] P1-01 (A) Implement `TileTopology`, `FlatHex`, graph distance, rings, areas, lines, and topology invariants
+- [x] P1-01 (A) Implement `TileTopology`, `FlatHex`, graph distance, rings, areas, lines, and topology invariants
 - [ ] P1-02 (A) Add fixed-point arithmetic, named RNG streams, and deterministic state hashing
 - [ ] P1-03 (B) Add rules-core entities, modifiers, yields, and property tests
 - [ ] P1-04 (B) Load validated TOML rulesets and ship the base data tables
@@ -50,3 +50,5 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 ## Phase 5+
 
 - [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres
+
+

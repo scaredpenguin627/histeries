@@ -1,8 +1,9 @@
 # ADR-0005: TOML rulesets and modifier language
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-18
 - Provenance: designed
+- Accepted by maintainer: 2026-11-18
 
 ## Context
 
@@ -21,3 +22,4 @@ Recommend option 2. `ruleset` validates TOML into immutable tables. Modifiers co
 ## Consequences
 
 Content changes remain reviewable and deterministic. The schema must be versioned, validation errors must be actionable, and arbitrary scripting remains outside Phases 1–2.
+

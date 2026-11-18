@@ -50,3 +50,7 @@ Simulation entities live in bounded generational arenas. Caches declare a capaci
 ## Platform and repository boundaries
 
 The lower crates remain pure Rust so OHOS and wasm32 checks do not need a native SDK. The workspace layout, ruleset data, provenance fixtures, assets, specs, ADRs, and session reports are kept in the paths listed in `AGENTS.md` section 14.
+
+## FlatHex Phase 1
+
+The first topology implementation uses stable row-major `TileId` values and keeps its internal axial representation private to `hex`. `FlatHex` supports independent horizontal and vertical wrapping. All returned collections are sorted and deduplicated, line-of-sight returns the endpoint-inclusive topology line, and the default pathfinding heuristic is the integer graph distance.

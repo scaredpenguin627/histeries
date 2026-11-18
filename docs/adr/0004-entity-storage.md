@@ -1,8 +1,9 @@
 # ADR-0004: generational entity arenas
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-18
 - Provenance: designed
+- Accepted by maintainer: 2026-11-18
 
 ## Context
 
@@ -21,3 +22,4 @@ Recommend option 2. `sim` stores entities in generational arenas, exposes typed 
 ## Consequences
 
 Stale handles fail safely and memory growth is measurable. Systems cannot rely on insertion order, and an ECS replacement would require a new determinism ADR.
+

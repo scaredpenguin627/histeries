@@ -13,3 +13,8 @@ CI fills the measured values. A blank value means the gate has not run yet.
 | AI turn-time p95 |  |  |  | Budget in `docs/budgets.md` |
 | Panics and crashes |  |  |  | Self-play count |
 | Fast-gate wall time |  |  |  | Target under 15 minutes |
+
+## Current implementation evidence
+
+P1-01 supplies the topology API, wrapping behavior, deterministic ordering, integer embedding, A* heuristic, and seven unit tests. The fast gate currently runs ten tests, with CI remaining authoritative for published scorecard values.
+

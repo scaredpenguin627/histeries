@@ -17,7 +17,7 @@ Created the Rust workspace, nine crate manifests, the `xtask` dependency-layer c
 - ADR-0004 proposes generational arenas with sorted-ID iteration.
 - ADR-0005 proposes validated TOML rulesets and effect/conditions/scope modifiers.
 
-All five ADRs are `Proposed` and require maintainer review before Phase 1.
+All five ADRs were accepted by the maintainer on 2026-11-18.
 
 ## Gates run
 
@@ -41,6 +41,7 @@ No CI-measured scorecard values moved. The scorecard table is ready for CI repor
 
 ## Next
 
-P0-07: maintainer acceptance of the bootstrap PR. Bookmark pushed: `task/bootstrap`. Pull request: https://github.com/scaredpenguin627/histeries/pull/1.
+P0-07 is complete. The maintainer accepted ADR-0001 through ADR-0005. Bookmark pushed: `task/bootstrap`. Pull request: https://github.com/scaredpenguin627/histeries/pull/1.
+
 
 

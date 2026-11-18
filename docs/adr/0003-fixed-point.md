@@ -1,8 +1,9 @@
 # ADR-0003: fixed-point representation
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-18
 - Provenance: designed
+- Accepted by maintainer: 2026-11-18
 
 ## Context
 
@@ -21,3 +22,4 @@ Recommend option 2. Use signed `i64` values with a scale of 1,000 for quantities
 ## Consequences
 
 Serialization is stable and portable. Designers must express rules in the chosen scale, and overflow checks are part of every arithmetic boundary.
+

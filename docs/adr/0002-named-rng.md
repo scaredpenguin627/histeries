@@ -1,8 +1,9 @@
 # ADR-0002: named deterministic random streams
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-18
 - Provenance: designed
+- Accepted by maintainer: 2026-11-18
 
 ## Context
 
@@ -21,3 +22,4 @@ Recommend option 2. Pin the generator crate version and algorithm, derive stream
 ## Consequences
 
 Independent systems do not perturb one another's sequence. Adding a stream is a save-format decision and requires a migration path.
+
