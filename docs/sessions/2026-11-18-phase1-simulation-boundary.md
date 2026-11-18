@@ -2,7 +2,8 @@
 
 - Task: P1-05 simulation state, command registry, observations, events, serialization, and replay (class A)
 - Model: Codex GPT-6.2
-- Reviewer: gpt-6.2-astra (APPROVE)\n- Commit: 42d99720 `feat(sim): add command and replay boundary`
+- Reviewer: gpt-6.2-astra (APPROVE)
+- Commit: ef97a0bf `feat(sim): add command and replay boundary`
 
 ## What changed
 
@@ -32,5 +33,6 @@ P1-05 adds state, command, observation, event, binary serialization, replay, and
 ## Next
 
 P1-06: map generation, terrain, features, rivers, resources, and editor commands.
+
 
 
