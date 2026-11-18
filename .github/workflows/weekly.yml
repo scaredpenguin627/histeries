@@ -3,7 +3,91 @@ on:
   schedule:
     - cron: "31 3 * * 0"
   workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: "Weekly run ID whose checkpoints to continue at this revision (optional)"
+        type: string
+        required: false
 jobs:
-  # Phase 0 stub. Phase 1 adds the long-running memory-slope and stress jobs.
-  weekly:
-    uses: ./.github/workflows/pr.yml
+  endurance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0, 1]
+    env:
+      CHECKPOINT_DIR: target/weekly-checkpoints
+      CHECKPOINT_KEY: weekly-v1-${{ github.sha }}-${{ inputs.resume_run_id || github.run_id }}-${{ matrix.seed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+      - name: Restore this seed's latest persisted boundary
+        uses: actions/cache/restore@v4
+        id: restore
+        with:
+          path: ${{ env.CHECKPOINT_DIR }}
+          key: ${{ env.CHECKPOINT_KEY }}-latest
+          restore-keys: ${{ env.CHECKPOINT_KEY }}-
+      - name: Read restored boundary
+        id: progress
+        env:
+          MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+        run: |
+          round=${MATCHED_KEY##*-}
+          echo "round=${round:-0}" >> "$GITHUB_OUTPUT"
+      - name: Run to round 300
+        if: fromJSON(steps.progress.outputs.round) < 300
+        run: cargo xtask fixture weekly --seed ${{ matrix.seed }} --checkpoint-dir "$CHECKPOINT_DIR" --stop-after-round 300
+      - uses: actions/cache/save@v4
+        if: fromJSON(steps.progress.outputs.round) < 300
+        with:
+          path: ${{ env.CHECKPOINT_DIR }}
+          key: ${{ env.CHECKPOINT_KEY }}-300
+      - name: Run to round 600
+        if: fromJSON(steps.progress.outputs.round) < 600
+        run: cargo xtask fixture weekly --seed ${{ matrix.seed }} --checkpoint-dir "$CHECKPOINT_DIR" --stop-after-round 600
+      - uses: actions/cache/save@v4
+        if: fromJSON(steps.progress.outputs.round) < 600
+        with:
+          path: ${{ env.CHECKPOINT_DIR }}
+          key: ${{ env.CHECKPOINT_KEY }}-600
+      - name: Run to round 900
+        if: fromJSON(steps.progress.outputs.round) < 900
+        run: cargo xtask fixture weekly --seed ${{ matrix.seed }} --checkpoint-dir "$CHECKPOINT_DIR" --stop-after-round 900
+      - uses: actions/cache/save@v4
+        if: fromJSON(steps.progress.outputs.round) < 900
+        with:
+          path: ${{ env.CHECKPOINT_DIR }}
+          key: ${{ env.CHECKPOINT_KEY }}-900
+      - name: Finish the 1,000-round fixture
+        run: |
+          cargo xtask fixture weekly --seed ${{ matrix.seed }} --checkpoint-dir "$CHECKPOINT_DIR"
+          jq -e -s '.[0] | .resumed_from_round == 900 and .turns_checked == 1000' target/gates/weekly.jsonl
+      - run: cargo xtask memgate --size huge --players 16 --seed ${{ matrix.seed }} --turns 1000 | tee target/gates/memory.json
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weekly-seed-${{ matrix.seed }}
+          path: target/gates/
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        offset: [0, 100, 200, 300, 400, 500, 600, 700, 800, 900]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+      - run: cargo xtask soak --offset ${{ matrix.offset }} --games 100
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak-offset-${{ matrix.offset }}
+          path: target/gates/soak.jsonl

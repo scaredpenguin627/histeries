@@ -1,0 +1,18 @@
+# Third-party licenses
+
+Generated with cargo-about 0.9.2 for the workspace with all features enabled. Regenerate with `cargo about generate --workspace --all-features --frozen --fail about.hbs -o THIRD_PARTY_LICENSES.md`.
+
+{{#each licenses}}
+## {{id}}
+
+{{#each used_by}}
+{{#if crate.source}}
+- {{crate.name}} {{crate.version}}
+{{/if}}
+{{/each}}
+
+````text
+{{{text}}}
+````
+
+{{/each}}

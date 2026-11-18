@@ -39,48 +39,58 @@ fn scenario(seed: u64) -> Result<Session, String> {
     for (i, player) in SEATS.into_iter().enumerate() {
         let capital = corners[i];
         let garrison = topology.line(capital, corners[1 - i])[1];
-        let settler = UnitId::new(2 * player.index());
-        for command in [
-            Command::EditorSetTerrain {
-                player,
-                tile: capital,
-                terrain: Terrain::Plains,
-            },
-            Command::EditorSetTerrain {
-                player,
-                tile: garrison,
-                terrain: Terrain::Plains,
-            },
-            Command::UnitSpawn {
-                player,
-                unit: settler,
-                kind: UnitKind::Settler,
-                tile: capital,
-            },
-            Command::CityFound {
-                player,
-                city: CityId::new(player.index()),
-                unit: settler,
-            },
-            Command::UnitSpawn {
-                player,
-                unit: UnitId::new(settler.index() + 1),
-                kind: UnitKind::Warrior,
-                tile: garrison,
-            },
-        ] {
-            session
-                .dispatch(command)
-                .map_err(|e| format!("setup: {e}"))?;
-        }
+        opening(&mut session, player, capital, garrison)?;
     }
     Ok(session)
+}
+
+pub(super) fn opening(
+    session: &mut Session,
+    player: PlayerId,
+    capital: TileId,
+    garrison: TileId,
+) -> Result<(), String> {
+    let settler = UnitId::new(2 * player.index());
+    for command in [
+        Command::EditorSetTerrain {
+            player,
+            tile: capital,
+            terrain: Terrain::Plains,
+        },
+        Command::EditorSetTerrain {
+            player,
+            tile: garrison,
+            terrain: Terrain::Plains,
+        },
+        Command::UnitSpawn {
+            player,
+            unit: settler,
+            kind: UnitKind::Settler,
+            tile: capital,
+        },
+        Command::CityFound {
+            player,
+            city: CityId::new(player.index()),
+            unit: settler,
+        },
+        Command::UnitSpawn {
+            player,
+            unit: UnitId::new(settler.index() + 1),
+            kind: UnitKind::Warrior,
+            tile: garrison,
+        },
+    ] {
+        session
+            .dispatch(command)
+            .map_err(|e| format!("setup: {e}"))?;
+    }
+    Ok(())
 }
 
 // Plans share a start-of-round snapshot. A later seat can lose a target or
 // contested tile to the earlier seat. After a lost move, a settler is no
 // longer at its intended position for any later move or founding order.
-fn dispatch_plan(
+pub(super) fn dispatch_plan(
     session: &mut Session,
     before: &SimulationState,
     seat: PlayerId,
@@ -103,7 +113,7 @@ fn dispatch_plan(
                 .map(|e| e.to_string())
         };
         if let Some(error) = error {
-            let conflict_possible = seat == SEATS[1]
+            let conflict_possible = Some(seat) != before.players().next()
                 && matches!(
                     command,
                     Command::UnitMove { .. }
@@ -194,6 +204,7 @@ fn play(
                 break;
             }
         }
+        crate::release_round_history(&mut session, false);
         turns += 1;
     }
 }

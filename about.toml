@@ -1,1 +1,2 @@
-[metadata]
+# Keep attribution choices within the set approved by deny.toml.
+accepted = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Zlib", "Unicode-3.0"]

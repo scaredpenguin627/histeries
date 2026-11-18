@@ -29,7 +29,7 @@ The first implementation phase is split into PR-sized work. Class A tasks are ar
 - [x] P1-09 (C) Add technology and civic data, policy slots, domination and science victory checks
 - [x] P1-10 (C) Add CLI `new`, `step`, `run`, `replay`, `map`, and scenario-editor commands
 - [x] P1-11 (A) Add strategic, operational, and tactical AI over the observation API
-- [ ] P1-12 (A) Add determinism, replay, memory, and performance gates for 2–8 player self-play
+- [x] P1-12 (A) Add determinism, replay, memory, and performance gates for 2–8 player self-play
 
 Phase 1 is complete after 1,000 random-seed self-play games have zero panics, hashes match across thread counts and save/load, the memory gate passes, the three-layer AI beats `greedy` in at least 75% of games, every military unit in contact receives an explicit order, and OHOS, wasm32, and fast-gate budgets are green.
 
