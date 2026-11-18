@@ -9,6 +9,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+histeries-hex = { path = "../hex" }
 histeries-rules-core = { path = "../rules-core" }
 
 [lib]

@@ -62,3 +62,7 @@ The first topology implementation uses stable row-major `TileId` values and keep
 ## Save and replay format
 
 ADR-0006 defines the custom binary boundary. State, command, and replay documents carry magic bytes and version 1. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
+
+## Map generation
+
+P1-06 uses `FlatHex` and a named `mapgen` stream to generate terrain, features, river edges, and resources in stable tile-ID order. Editor commands mutate map data only through `sim`, and map serialization rejects incompatible terrain edits and non-canonical tile order.

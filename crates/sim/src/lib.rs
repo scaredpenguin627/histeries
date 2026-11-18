@@ -4,7 +4,11 @@
 
 use std::{collections::BTreeMap, fmt};
 
+use histeries_hex::TileId;
 use histeries_rules_core::PlayerId;
+
+pub mod map;
+pub use map::{Feature, MapError, MapState, ResourceKind, RiverDirection, Terrain, generate_map};
 
 /// The versioned algorithm identifier for per-turn state hashes.
 pub const STATE_HASH_ALGORITHM: &str = "fnv1a64-v1-little-endian-length-prefixed";
@@ -95,6 +99,42 @@ pub enum Command {
         /// The new marker value.
         value: i64,
     },
+    /// Sets one tile's terrain through the editor command boundary.
+    EditorSetTerrain {
+        /// The seat issuing the editor command.
+        player: PlayerId,
+        /// The target tile ID.
+        tile: TileId,
+        /// The replacement terrain.
+        terrain: Terrain,
+    },
+    /// Sets one tile's feature through the editor command boundary.
+    EditorSetFeature {
+        /// The seat issuing the editor command.
+        player: PlayerId,
+        /// The target tile ID.
+        tile: TileId,
+        /// The replacement feature.
+        feature: Feature,
+    },
+    /// Sets or clears one tile's river edge.
+    EditorSetRiver {
+        /// The seat issuing the editor command.
+        player: PlayerId,
+        /// The target tile ID.
+        tile: TileId,
+        /// The replacement river edge.
+        river: Option<RiverDirection>,
+    },
+    /// Sets or clears one tile's resource.
+    EditorSetResource {
+        /// The seat issuing the editor command.
+        player: PlayerId,
+        /// The target tile ID.
+        tile: TileId,
+        /// The replacement resource.
+        resource: Option<ResourceKind>,
+    },
 }
 
 impl Command {
@@ -103,6 +143,10 @@ impl Command {
         match self {
             Self::TurnEnd { .. } => "turn.end",
             Self::EditorSetMarker { .. } => "editor.set_marker",
+            Self::EditorSetTerrain { .. } => "editor.set_terrain",
+            Self::EditorSetFeature { .. } => "editor.set_feature",
+            Self::EditorSetRiver { .. } => "editor.set_river",
+            Self::EditorSetResource { .. } => "editor.set_resource",
         }
     }
 
@@ -121,6 +165,46 @@ impl Command {
                 put_u32(&mut bytes, player.index());
                 put_i64(&mut bytes, *value);
             }
+            Self::EditorSetTerrain {
+                player,
+                tile,
+                terrain,
+            } => {
+                bytes.push(2);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, tile.index());
+                bytes.push(*terrain as u8);
+            }
+            Self::EditorSetFeature {
+                player,
+                tile,
+                feature,
+            } => {
+                bytes.push(3);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, tile.index());
+                bytes.push(*feature as u8);
+            }
+            Self::EditorSetRiver {
+                player,
+                tile,
+                river,
+            } => {
+                bytes.push(4);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, tile.index());
+                bytes.push(river.map_or(255, |river| river as u8));
+            }
+            Self::EditorSetResource {
+                player,
+                tile,
+                resource,
+            } => {
+                bytes.push(5);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, tile.index());
+                bytes.push(resource.map_or(255, |resource| resource as u8));
+            }
         }
         bytes
     }
@@ -137,6 +221,26 @@ impl Command {
             1 => Self::EditorSetMarker {
                 player,
                 value: reader.i64()?,
+            },
+            2 => Self::EditorSetTerrain {
+                player,
+                tile: TileId::new(reader.u32()?),
+                terrain: decode_terrain(&mut reader)?,
+            },
+            3 => Self::EditorSetFeature {
+                player,
+                tile: TileId::new(reader.u32()?),
+                feature: decode_feature(&mut reader)?,
+            },
+            4 => Self::EditorSetRiver {
+                player,
+                tile: TileId::new(reader.u32()?),
+                river: decode_river(&mut reader)?,
+            },
+            5 => Self::EditorSetResource {
+                player,
+                tile: TileId::new(reader.u32()?),
+                resource: decode_resource(&mut reader)?,
             },
             other => return Err(SerializationError::InvalidTag(other)),
         };
@@ -179,10 +283,26 @@ impl CommandRegistry {
     }
 }
 
-static COMMAND_SPECS: [CommandSpec; 2] = [
+static COMMAND_SPECS: [CommandSpec; 6] = [
+    CommandSpec {
+        id: "editor.set_feature",
+        schema: "player:u32,tile:u32,feature:u8",
+    },
     CommandSpec {
         id: "editor.set_marker",
         schema: "player:u32,value:i64",
+    },
+    CommandSpec {
+        id: "editor.set_resource",
+        schema: "player:u32,tile:u32,resource:u8?",
+    },
+    CommandSpec {
+        id: "editor.set_river",
+        schema: "player:u32,tile:u32,river:u8?",
+    },
+    CommandSpec {
+        id: "editor.set_terrain",
+        schema: "player:u32,tile:u32,terrain:u8",
     },
     CommandSpec {
         id: "turn.end",
@@ -202,13 +322,25 @@ pub const fn command_registry() -> CommandRegistry {
 pub struct SimulationState {
     turn: u32,
     markers: BTreeMap<PlayerId, i64>,
+    map: Option<MapState>,
 }
 
 impl SimulationState {
     /// Creates a state with the supplied seats and zero markers.
     pub fn new(players: impl IntoIterator<Item = PlayerId>) -> Self {
         let markers = players.into_iter().map(|player| (player, 0)).collect();
-        Self { turn: 0, markers }
+        Self {
+            turn: 0,
+            markers,
+            map: None,
+        }
+    }
+
+    /// Creates a state with seats and a generated or edited map.
+    pub fn with_map(players: impl IntoIterator<Item = PlayerId>, map: MapState) -> Self {
+        let mut state = Self::new(players);
+        state.map = Some(map);
+        state
     }
 
     /// Returns the current turn.
@@ -235,6 +367,13 @@ impl SimulationState {
             hasher.write_u64(player.index() as u64);
             hasher.write_i64(*marker);
         }
+        match &self.map {
+            Some(map) => {
+                hasher.write_u64(1);
+                hasher.write_bytes(&map.encode());
+            }
+            None => hasher.write_u64(0),
+        }
         hasher.finish()
     }
 
@@ -248,6 +387,12 @@ impl SimulationState {
         for (player, marker) in &self.markers {
             put_u32(&mut bytes, player.index());
             put_i64(&mut bytes, *marker);
+        }
+        if let Some(map) = &self.map {
+            put_u32(&mut bytes, map.encode().len() as u32);
+            bytes.extend_from_slice(&map.encode());
+        } else {
+            put_u32(&mut bytes, 0);
         }
         bytes
     }
@@ -275,8 +420,14 @@ impl SimulationState {
                 return Err(SerializationError::DuplicateKey);
             }
         }
+        let map_bytes = reader.bytes()?;
+        let map = if map_bytes.is_empty() {
+            None
+        } else {
+            Some(MapState::decode(map_bytes).map_err(|_| SerializationError::InvalidMap)?)
+        };
         reader.finish()?;
-        Ok(Self { turn, markers })
+        Ok(Self { turn, markers, map })
     }
 
     fn apply(&mut self, command: &Command) -> Result<EventKind, DispatchError> {
@@ -296,6 +447,58 @@ impl SimulationState {
                     player: *player,
                     value: *value,
                 })
+            }
+            Command::EditorSetTerrain {
+                player,
+                tile,
+                terrain,
+            } => {
+                self.require_player(*player)?;
+                self.map
+                    .as_mut()
+                    .ok_or(DispatchError::NoMap)?
+                    .set_terrain(*tile, *terrain)
+                    .map_err(DispatchError::Map)?;
+                Ok(EventKind::MapEdited { tile: *tile })
+            }
+            Command::EditorSetFeature {
+                player,
+                tile,
+                feature,
+            } => {
+                self.require_player(*player)?;
+                self.map
+                    .as_mut()
+                    .ok_or(DispatchError::NoMap)?
+                    .set_feature(*tile, *feature)
+                    .map_err(DispatchError::Map)?;
+                Ok(EventKind::MapEdited { tile: *tile })
+            }
+            Command::EditorSetRiver {
+                player,
+                tile,
+                river,
+            } => {
+                self.require_player(*player)?;
+                self.map
+                    .as_mut()
+                    .ok_or(DispatchError::NoMap)?
+                    .set_river(*tile, *river)
+                    .map_err(DispatchError::Map)?;
+                Ok(EventKind::MapEdited { tile: *tile })
+            }
+            Command::EditorSetResource {
+                player,
+                tile,
+                resource,
+            } => {
+                self.require_player(*player)?;
+                self.map
+                    .as_mut()
+                    .ok_or(DispatchError::NoMap)?
+                    .set_resource(*tile, *resource)
+                    .map_err(DispatchError::Map)?;
+                Ok(EventKind::MapEdited { tile: *tile })
             }
         }
     }
@@ -367,6 +570,11 @@ pub enum EventKind {
     TurnAdvanced {
         /// The new turn number.
         turn: u32,
+    },
+    /// A map tile was edited.
+    MapEdited {
+        /// The edited tile ID.
+        tile: TileId,
     },
 }
 
@@ -454,6 +662,17 @@ impl Session {
         }
     }
 
+    /// Creates a session with the supplied seats and map.
+    pub fn with_map(players: impl IntoIterator<Item = PlayerId>, map: MapState) -> Self {
+        let state = SimulationState::with_map(players, map);
+        Self {
+            replay: ReplayLog::new(state.clone()),
+            state,
+            events: Vec::new(),
+            next_event_sequence: 0,
+        }
+    }
+
     /// Returns the canonical command registry.
     pub const fn registry(&self) -> CommandRegistry {
         command_registry()
@@ -518,6 +737,10 @@ pub enum DispatchError {
     TurnOverflow,
     /// The command ID was absent from the registry.
     UnregisteredCommand(&'static str),
+    /// A map was required by an editor command.
+    NoMap,
+    /// A map edit failed validation.
+    Map(MapError),
     /// The event sequence would overflow.
     EventSequenceOverflow,
 }
@@ -528,6 +751,8 @@ impl fmt::Display for DispatchError {
             Self::UnknownPlayer(player) => write!(formatter, "unknown player {}", player.index()),
             Self::TurnOverflow => formatter.write_str("turn counter overflow"),
             Self::UnregisteredCommand(id) => write!(formatter, "unregistered command {id}"),
+            Self::NoMap => formatter.write_str("command requires a map"),
+            Self::Map(error) => write!(formatter, "map command rejected: {error}"),
             Self::EventSequenceOverflow => formatter.write_str("event sequence overflow"),
         }
     }
@@ -552,6 +777,8 @@ pub enum SerializationError {
     DuplicateKey,
     /// Canonical map keys were not strictly ascending.
     NonCanonicalOrder,
+    /// Embedded map data failed map validation.
+    InvalidMap,
     /// Bytes remained after the expected document.
     TrailingBytes,
 }
@@ -570,6 +797,7 @@ impl fmt::Display for SerializationError {
             Self::NonCanonicalOrder => {
                 formatter.write_str("non-canonical key order in binary document")
             }
+            Self::InvalidMap => formatter.write_str("invalid embedded map document"),
             Self::TrailingBytes => formatter.write_str("trailing bytes in binary document"),
         }
     }
@@ -674,19 +902,52 @@ fn put_i64(bytes: &mut Vec<u8>, value: i64) {
     bytes.extend_from_slice(&value.to_le_bytes());
 }
 
+fn decode_terrain(reader: &mut Reader<'_>) -> Result<Terrain, SerializationError> {
+    let value = reader.u8()?;
+    Terrain::from_u8(value).ok_or(SerializationError::InvalidTag(value))
+}
+
+fn decode_feature(reader: &mut Reader<'_>) -> Result<Feature, SerializationError> {
+    let value = reader.u8()?;
+    Feature::from_u8(value).ok_or(SerializationError::InvalidTag(value))
+}
+
+fn decode_river(reader: &mut Reader<'_>) -> Result<Option<RiverDirection>, SerializationError> {
+    let value = reader.u8()?;
+    if value == 255 {
+        Ok(None)
+    } else {
+        RiverDirection::from_u8(value)
+            .map(Some)
+            .ok_or(SerializationError::InvalidTag(value))
+    }
+}
+
+fn decode_resource(reader: &mut Reader<'_>) -> Result<Option<ResourceKind>, SerializationError> {
+    let value = reader.u8()?;
+    if value == 255 {
+        Ok(None)
+    } else {
+        ResourceKind::from_u8(value)
+            .map(Some)
+            .ok_or(SerializationError::InvalidTag(value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use histeries_hex::FlatHex;
     use histeries_rules_core::PlayerId;
 
     use super::{
         Command, EventKind, ReplayLog, STATE_HASH_ALGORITHM, SerializationError, Session,
-        SimulationState, StateHasher, command_registry,
+        SimulationState, StateHasher, Terrain, command_registry, generate_map,
     };
 
     #[test]
     fn registry_has_stable_command_ids() {
         let registry = command_registry();
-        assert_eq!(registry.specs()[0].id, "editor.set_marker");
+        assert_eq!(registry.specs()[0].id, "editor.set_feature");
         assert_eq!(registry.find("turn.end").unwrap().schema, "player:u32");
         assert!(
             registry
@@ -733,6 +994,28 @@ mod tests {
     }
 
     #[test]
+    fn editor_commands_mutate_a_generated_map_through_session() {
+        let player = PlayerId::new(1);
+        let map = generate_map(FlatHex::new(3, 3, false, false).unwrap(), [4; 32]);
+        let mut session = Session::with_map([player], map);
+        session
+            .dispatch(Command::EditorSetTerrain {
+                player,
+                tile: super::TileId::new(0),
+                terrain: Terrain::Plains,
+            })
+            .unwrap();
+        assert!(matches!(
+            session.events()[0].kind(),
+            EventKind::MapEdited { .. }
+        ));
+        assert_eq!(
+            session.replay().replay().unwrap().state_hash(),
+            session.state_hash()
+        );
+    }
+
+    #[test]
     fn malformed_documents_are_rejected() {
         assert_eq!(Command::decode(b"bad"), Err(SerializationError::Truncated));
         let mut command = Command::TurnEnd {
@@ -761,10 +1044,12 @@ mod tests {
             Err(SerializationError::TrailingBytes)
         );
 
-        let mut duplicate = SimulationState::new([PlayerId::new(1)]).encode();
+        let original = SimulationState::new([PlayerId::new(1)]).encode();
+        let mut duplicate = original[..26].to_vec();
         duplicate[10..14].copy_from_slice(&2_u32.to_le_bytes());
         duplicate.extend_from_slice(&1_u32.to_le_bytes());
         duplicate.extend_from_slice(&0_i64.to_le_bytes());
+        duplicate.extend_from_slice(&0_u32.to_le_bytes());
         assert_eq!(
             SimulationState::decode(&duplicate),
             Err(SerializationError::DuplicateKey)

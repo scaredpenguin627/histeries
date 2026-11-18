@@ -76,6 +76,7 @@ dependencies = [
 name = "histeries-sim"
 version = "0.1.0"
 dependencies = [
+ "histeries-hex",
  "histeries-rules-core",
 ]
 
