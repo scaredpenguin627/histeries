@@ -19,7 +19,7 @@ Done when the scaffold, docs, five accepted ADRs, and both xtask gates are prese
 The first implementation phase is split into PR-sized work. Class A tasks are architecture-critical, class B tasks are core implementation, and class C tasks are routine or data work.
 
 - [x] P1-01 (A) Implement `TileTopology`, `FlatHex`, graph distance, rings, areas, lines, and topology invariants
-- [ ] P1-02 (A) Add fixed-point arithmetic, named RNG streams, and deterministic state hashing
+- [x] P1-02 (A) Add fixed-point arithmetic, named RNG streams, and deterministic state hashing
 - [ ] P1-03 (B) Add rules-core entities, modifiers, yields, and property tests
 - [ ] P1-04 (B) Load validated TOML rulesets and ship the base data tables
 - [ ] P1-05 (A) Build simulation state, command registry, observations, events, serialization, and replay
@@ -50,6 +50,7 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 ## Phase 5+
 
 - [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres
+
 
 
 

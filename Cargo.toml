@@ -24,3 +24,6 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+
+[workspace.dependencies]
+rand_chacha = "=0.9.0"

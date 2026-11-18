@@ -23,3 +23,7 @@ Recommend option 2. Pin the generator crate version and algorithm, derive stream
 
 Independent systems do not perturb one another's sequence. Adding a stream is a save-format decision and requires a migration path.
 
+
+## Phase 1 implementation details
+
+The first implementation pins `rand_chacha` 0.9.0 and uses `ChaCha8Rng`. Each stream derives a 32-byte seed from the master seed and its stable name with the documented FNV-1a seed derivation. The algorithm identifier `chacha8-v0.9.0-named-fnv1a-seed-v1` is available to save metadata. Bounded values use rejection sampling to avoid modulo bias.

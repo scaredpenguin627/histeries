@@ -54,3 +54,7 @@ The lower crates remain pure Rust so OHOS and wasm32 checks do not need a native
 ## FlatHex Phase 1
 
 The first topology implementation uses stable row-major `TileId` values and keeps its internal axial representation private to `hex`. `FlatHex` supports independent horizontal and vertical wrapping. All returned collections are sorted and deduplicated, line-of-sight returns the endpoint-inclusive topology line, and the default pathfinding heuristic is the integer graph distance.
+
+## Deterministic arithmetic and hashing
+
+`rules-core` uses checked signed fixed-point values with scale 1,000. Named streams use the pinned ChaCha8 algorithm and stable stream labels. `sim` hashes canonical length-prefixed fields with a versioned little-endian FNV-1a algorithm.

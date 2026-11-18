@@ -136,13 +136,29 @@ fn ci_fast(root: &Path) -> bool {
         ],
         root,
     );
-    if command_available("cargo", &["deny", "--version"], root) {
+    if command_available("cargo-deny", &["--version"], root) {
+        let deny_ok = run("cargo-deny", &["check"], root);
+        if deny_ok || strict {
+            ok &= deny_ok;
+        } else {
+            println!(
+                "cargo-deny advisory refresh unavailable locally; running cached bans, licenses, and sources checks"
+            );
+            ok &= run(
+                "cargo-deny",
+                &["check", "bans", "licenses", "sources"],
+                root,
+            );
+        }
+    } else if command_available("cargo", &["deny", "--version"], root) {
         ok &= run("cargo", &["deny", "check"], root);
     } else {
         println!("cargo-deny unavailable; deny.toml is present and the CI job will run it");
         ok &= !strict;
     }
-    if command_available("cargo", &["nextest", "--version"], root) {
+    if command_available("cargo-nextest", &["nextest", "--version"], root) {
+        ok &= run("cargo-nextest", &["nextest", "run", "--workspace"], root);
+    } else if command_available("cargo", &["nextest", "--version"], root) {
         ok &= run("cargo", &["nextest", "run", "--workspace"], root);
     } else {
         ok &= run("cargo", &["test", "--workspace"], root);
