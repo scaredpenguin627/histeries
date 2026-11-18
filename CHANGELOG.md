@@ -19,3 +19,4 @@ All notable changes are recorded here.
 - Added city founding, housing-capped growth, production queues, districts, twelve buildings, and builder charges for P1-08.
 - Added 25-node technology and civic trees, research progress, policy slots, and domination and science victory checks for P1-09.
 - Added deterministic CLI `new`, `step`, `run`, `replay`, `map`, and scenario-editor commands for P1-10.
+- Added strategic victory selection with hysteresis, multi-turn city and research planning, joint tactical beam search, and a paired tournament against greedy and seeded random players.

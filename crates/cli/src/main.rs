@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+mod tournament;
+
 use std::{env, fs};
 
 use histeries_hex::{FlatHex, TileId};
@@ -27,6 +29,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "step" => command_step(&args[1..]),
         "run" => command_run(&args[1..]),
         "replay" => command_replay(&args[1..]),
+        "tournament" => tournament::run(&args[1..]),
         "map" => command_map(&args[1..]),
         "editor" | "scenario-editor" => command_editor(&args[1..]),
         "help" | "--help" | "-h" => {
@@ -390,7 +393,7 @@ fn seed_bytes(seed: u64) -> [u8; 32] {
 }
 
 fn usage() -> String {
-    "usage: histeries <new|step|run|replay|map|editor> ...\n  new [--players N] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  map STATE\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
+    "usage: histeries <new|step|run|replay|tournament|map|editor> ...\n  new [--players N] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  map STATE\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
 }
 
 #[cfg(test)]

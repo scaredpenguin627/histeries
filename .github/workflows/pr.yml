@@ -21,3 +21,17 @@ jobs:
         run: cargo install --locked cargo-nextest@0.9.149 cargo-deny@0.20.2 cargo-about@0.9.2
       - name: Fast gate
         run: cargo xtask ci-fast
+      - name: Measure paired games against greedy
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --locked --release -p histeries-cli --bin histeries -- tournament --opponent greedy --seed 20000 --seeds 32 --turns 500 | tee p1-11-tournament.txt
+          awk '/^games=64 / { for (i=1; i<=NF; ++i) if ($i ~ /^win_bp=/) {split($i,a,"="); passed=(a[2]+0 >= 7500)} } END { exit !passed }' p1-11-tournament.txt
+      - name: Attach tournament outcomes and final hashes
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-11-tournament
+          path: p1-11-tournament.txt
+          if-no-files-found: ignore

@@ -178,6 +178,13 @@ pub enum Command {
         /// The unit to heal.
         unit: UnitId,
     },
+    /// Holds the unit's tile and spends its remaining movement.
+    UnitHold {
+        /// The issuing seat.
+        player: PlayerId,
+        /// The unit receiving the order.
+        unit: UnitId,
+    },
     /// Applies a unit promotion.
     UnitPromote {
         /// The issuing seat.
@@ -212,6 +219,13 @@ pub enum Command {
         /// Stable city ID.
         city: CityId,
         /// Settler unit to consume.
+        unit: UnitId,
+    },
+    /// Founds a city using an ID allocated during dispatch.
+    CitySettle {
+        /// The founding seat.
+        player: PlayerId,
+        /// Owned settler on the proposed city site.
         unit: UnitId,
     },
     /// Queues one city production order.
@@ -289,10 +303,12 @@ impl Command {
             Self::UnitBuildRoad { .. } => "unit.build_road",
             Self::UnitAttack { .. } => "unit.attack",
             Self::UnitHeal { .. } => "unit.heal",
+            Self::UnitHold { .. } => "unit.hold",
             Self::UnitPromote { .. } => "unit.promote",
             Self::UnitSpawn { .. } => "unit.spawn",
             Self::BarbarianSpawn { .. } => "barbarian.spawn",
             Self::CityFound { .. } => "city.found",
+            Self::CitySettle { .. } => "city.settle",
             Self::CitySetProduction { .. } => "city.set_production",
             Self::CityBuildDistrict { .. } => "city.build_district",
             Self::CityBuildBuilding { .. } => "city.build_building",
@@ -383,6 +399,11 @@ impl Command {
                 put_u32(&mut bytes, attacker.index());
                 put_u32(&mut bytes, defender.index());
             }
+            Self::UnitHold { player, unit } => {
+                bytes.push(21);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, unit.index());
+            }
             Self::UnitHeal { player, unit } => {
                 bytes.push(9);
                 put_u32(&mut bytes, player.index());
@@ -414,6 +435,11 @@ impl Command {
                 put_u32(&mut bytes, unit.index());
                 bytes.push(*kind as u8);
                 put_u32(&mut bytes, tile.index());
+            }
+            Self::CitySettle { player, unit } => {
+                bytes.push(22);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, unit.index());
             }
             Self::CityFound { player, city, unit } => {
                 bytes.push(13);
@@ -551,6 +577,10 @@ impl Command {
                 city: CityId::new(reader.u32()?),
                 unit: UnitId::new(reader.u32()?),
             },
+            22 => Self::CitySettle {
+                player: PlayerId::new(reader.u32()?),
+                unit: UnitId::new(reader.u32()?),
+            },
             14 => Self::CitySetProduction {
                 player: PlayerId::new(reader.u32()?),
                 city: CityId::new(reader.u32()?),
@@ -581,6 +611,10 @@ impl Command {
                 player: PlayerId::new(reader.u32()?),
                 slot: reader.u8()?,
                 policy: reader.string()?,
+            },
+            21 => Self::UnitHold {
+                player: PlayerId::new(reader.u32()?),
+                unit: UnitId::new(reader.u32()?),
             },
             20 => Self::PolicyRemove {
                 player: PlayerId::new(reader.u32()?),
@@ -627,7 +661,7 @@ impl CommandRegistry {
     }
 }
 
-static COMMAND_SPECS: [CommandSpec; 21] = [
+static COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         id: "barbarian.spawn",
         schema: "tile:u32,kind:u8",
@@ -647,6 +681,10 @@ static COMMAND_SPECS: [CommandSpec; 21] = [
     CommandSpec {
         id: "city.set_production",
         schema: "player:u32,city:u32,item:production",
+    },
+    CommandSpec {
+        id: "city.settle",
+        schema: "player:u32,unit:u32",
     },
     CommandSpec {
         id: "policy.adopt",
@@ -701,6 +739,10 @@ static COMMAND_SPECS: [CommandSpec; 21] = [
         schema: "player:u32,unit:u32",
     },
     CommandSpec {
+        id: "unit.hold",
+        schema: "player:u32,unit:u32",
+    },
+    CommandSpec {
         id: "unit.move",
         schema: "player:u32,unit:u32,destination:u32",
     },
@@ -717,7 +759,7 @@ static COMMAND_SPECS: [CommandSpec; 21] = [
 /// Returns the process-wide command registry.
 pub const fn command_registry() -> CommandRegistry {
     CommandRegistry {
-        specs: &COMMAND_SPECS,
+        specs: COMMAND_SPECS,
     }
 }
 
@@ -1323,6 +1365,17 @@ impl SimulationState {
                 defender,
             } => self.unit_attack(*player, *attacker, *defender),
             Command::UnitHeal { player, unit } => self.unit_heal(*player, *unit),
+            Command::UnitHold { player, unit } => {
+                let held = self
+                    .units
+                    .get_mut(unit)
+                    .ok_or(DispatchError::UnknownUnit(*unit))?;
+                if held.owner != Some(*player) {
+                    return Err(DispatchError::UnauthorizedUnit(*unit));
+                }
+                held.movement = 0;
+                Ok(EventKind::UnitChanged { unit: *unit })
+            }
             Command::UnitPromote {
                 player,
                 unit,
@@ -1336,6 +1389,18 @@ impl SimulationState {
             } => self.unit_spawn(*player, *unit, *kind, *tile),
             Command::BarbarianSpawn { tile, kind } => self.barbarian_spawn(*tile, *kind),
             Command::CityFound { player, city, unit } => self.city_found(*player, *city, *unit),
+            Command::CitySettle { player, unit } => {
+                let mut candidate = 0_u32;
+                for city in self.cities.keys() {
+                    if city.index() != candidate {
+                        break;
+                    }
+                    candidate = candidate
+                        .checked_add(1)
+                        .ok_or(DispatchError::CityIdOverflow)?;
+                }
+                self.city_found(*player, CityId::new(candidate), *unit)
+            }
             Command::CitySetProduction { player, city, item } => {
                 self.city_set_production(*player, *city, *item)
             }
@@ -1447,26 +1512,12 @@ impl SimulationState {
             .ok_or(DispatchError::UnknownUnit(defender_id))?
             .clone();
         self.require_unit_owner(&attacker, player)?;
-        if attacker.owner == defender.owner
-            || !attacker.kind.is_military()
-            || !defender.kind.is_military()
-        {
-            return Err(DispatchError::InvalidCombat);
-        }
         let map = self.map.as_ref().ok_or(DispatchError::NoMap)?;
         let distance = map.topology().distance(attacker.tile, defender.tile);
-        if distance > attacker.kind.range() {
-            return Err(DispatchError::InvalidCombat);
-        }
-        if attacker.movement <= 0 {
-            return Err(DispatchError::InsufficientMovement);
-        }
-        let attacker_damage = (attacker.attack() - defender.defense() / 2).max(1);
-        let defender_damage = if distance == 1 {
-            (defender.attack() - attacker.defense() / 2).max(1)
-        } else {
-            0
-        };
+        let damage = VisibleUnitObservation::from(&attacker)
+            .forecast_attack(VisibleUnitObservation::from(&defender), distance)?;
+        let attacker_damage = damage.to_defender;
+        let defender_damage = damage.to_attacker;
         let defender_hp = defender.hp - attacker_damage;
         let attacker_hp = attacker.hp - defender_damage;
         if defender_hp <= 0 {
@@ -1496,14 +1547,10 @@ impl SimulationState {
             .ok_or(DispatchError::UnknownUnit(unit_id))?
             .clone();
         self.require_unit_owner(&unit, player)?;
-        if self.has_enemy_zoc(player, unit.tile) {
-            return Err(DispatchError::UnsafeHeal);
-        }
+        let hp = VisibleUnitObservation::from(&unit)
+            .forecast_heal(self.has_enemy_zoc(player, unit.tile))?;
         let healed = self.units.get_mut(&unit_id).expect("unit was checked");
-        if healed.hp >= healed.kind.max_hp() {
-            return Err(DispatchError::AlreadyFullHealth);
-        }
-        healed.hp = (healed.hp + 20).min(healed.kind.max_hp());
+        healed.hp = hp;
         healed.movement = 0;
         Ok(EventKind::UnitChanged { unit: unit_id })
     }
@@ -1617,7 +1664,7 @@ impl SimulationState {
             .ok_or(DispatchError::UnknownTile(settler.tile))?
             .terrain;
         Unit::movement_cost(terrain, false).ok_or(DispatchError::InvalidCityTile(settler.tile))?;
-        if self.tile_occupied_except_unit(settler.tile, unit_id)
+        if self.tile_occupied_except_unit(settler.tile, Some(unit_id))
             || self.queued_district_at(settler.tile)
         {
             return Err(DispatchError::Occupied(settler.tile));
@@ -1968,7 +2015,7 @@ impl SimulationState {
 
     fn refresh_policy_slots(&mut self, player: PlayerId) {
         if let Some(progress) = self.progress.get_mut(&player) {
-            progress.policy_slots = (2 + (progress.civics.len() / 5) as u8).min(5);
+            progress.policy_slots = PlayerProgress::slots_for_civics(progress.civics.len());
             progress
                 .policies
                 .retain(|slot, _| *slot < progress.policy_slots);
@@ -2076,10 +2123,10 @@ impl SimulationState {
     }
 
     fn tile_occupied(&self, tile: TileId) -> bool {
-        self.tile_occupied_except_unit(tile, UnitId::new(u32::MAX))
+        self.tile_occupied_except_unit(tile, None)
     }
 
-    fn tile_occupied_except_unit(&self, tile: TileId, ignored_unit: UnitId) -> bool {
+    fn tile_occupied_except_unit(&self, tile: TileId, ignored_unit: Option<UnitId>) -> bool {
         self.cities.values().any(|city| city.tile == tile)
             || self
                 .cities
@@ -2088,7 +2135,7 @@ impl SimulationState {
             || self
                 .units
                 .values()
-                .any(|unit| unit.id != ignored_unit && unit.tile == tile)
+                .any(|unit| Some(unit.id) != ignored_unit && unit.tile == tile)
     }
 
     fn queued_district_at(&self, tile: TileId) -> bool {
@@ -2141,6 +2188,9 @@ pub struct Observation {
     cities: Vec<CityObservation>,
     progress: ProgressObservation,
     victory: Option<VictoryKind>,
+    visible_tiles: Vec<VisibleTileObservation>,
+    visible_units: Vec<VisibleUnitObservation>,
+    visible_cities: Vec<VisibleCityObservation>,
 }
 
 impl Observation {
@@ -2178,6 +2228,21 @@ impl Observation {
     pub const fn victory(&self) -> Option<VictoryKind> {
         self.victory
     }
+
+    /// Returns visible map tiles with terrain and graph neighbors.
+    pub fn visible_tiles(&self) -> &[VisibleTileObservation] {
+        &self.visible_tiles
+    }
+
+    /// Returns units on visible tiles, including public owner identity.
+    pub fn visible_units(&self) -> &[VisibleUnitObservation] {
+        &self.visible_units
+    }
+
+    /// Returns cities on visible tiles, including public owner identity.
+    pub fn visible_cities(&self) -> &[VisibleCityObservation] {
+        &self.visible_cities
+    }
 }
 
 /// The seat-scoped projection of progression state.
@@ -2199,6 +2264,128 @@ pub struct ProgressObservation {
     pub policy_slots: u8,
     /// Active policies in slot order.
     pub policies: Vec<(u8, String)>,
+}
+
+/// Fog-safe tile data available to an observing seat.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VisibleTileObservation {
+    /// Stable tile ID.
+    pub tile: TileId,
+    /// Terrain category.
+    pub terrain: Terrain,
+    /// Feature category.
+    pub feature: Feature,
+    /// Optional river edge.
+    pub river: Option<RiverDirection>,
+    /// Optional visible resource.
+    pub resource: Option<ResourceKind>,
+    /// Whether the observing seat knows a road exists.
+    pub road: bool,
+    /// Whether a unit, city center, or district occupies this visible tile.
+    pub occupied: bool,
+    /// A visible construction site reserved by a pending district order.
+    pub district_reserved: bool,
+    /// Topology neighbors in stable order.
+    pub neighbors: Vec<TileId>,
+}
+
+/// Fog-safe unit data on a visible tile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VisibleUnitObservation {
+    /// Stable unit ID.
+    pub id: UnitId,
+    /// Public owner identity for a visible unit.
+    pub owner: Option<PlayerId>,
+    /// Unit archetype.
+    pub kind: UnitKind,
+    /// Occupied tile.
+    pub tile: TileId,
+    /// Current hit points.
+    pub hp: i32,
+    /// Current movement points.
+    pub movement: i32,
+    /// Effective attack strength, including visible promotions.
+    pub attack: i32,
+    /// Effective defense strength, including visible promotions.
+    pub defense: i32,
+}
+
+/// Deterministic damage exchanged by two visible units in a single attack.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CombatDamage {
+    /// Damage dealt to the defender, including any excess over remaining HP.
+    pub to_defender: i32,
+    /// Retaliation damage dealt to the attacker.
+    pub to_attacker: i32,
+}
+
+impl From<&Unit> for VisibleUnitObservation {
+    fn from(unit: &Unit) -> Self {
+        Self {
+            id: unit.id,
+            owner: unit.owner,
+            kind: unit.kind,
+            tile: unit.tile,
+            hp: unit.hp,
+            movement: unit.movement,
+            attack: unit.attack(),
+            defense: unit.defense(),
+        }
+    }
+}
+
+impl VisibleUnitObservation {
+    /// Returns hit points after one legal heal in the projected position.
+    pub fn forecast_heal(self, in_enemy_zoc: bool) -> Result<i32, DispatchError> {
+        if in_enemy_zoc {
+            return Err(DispatchError::UnsafeHeal);
+        }
+        if self.hp >= self.kind.max_hp() {
+            return Err(DispatchError::AlreadyFullHealth);
+        }
+        Ok((self.hp + 20).min(self.kind.max_hp()))
+    }
+
+    /// Resolves one combat exchange using the same rules as live dispatch.
+    pub fn forecast_attack(
+        self,
+        defender: Self,
+        distance: u32,
+    ) -> Result<CombatDamage, DispatchError> {
+        if self.owner == defender.owner
+            || !self.kind.is_military()
+            || !defender.kind.is_military()
+            || distance > self.kind.range()
+        {
+            return Err(DispatchError::InvalidCombat);
+        }
+        if self.movement <= 0 {
+            return Err(DispatchError::InsufficientMovement);
+        }
+        Ok(CombatDamage {
+            to_defender: (self.attack - defender.defense / 2).max(1),
+            to_attacker: if distance == 1 {
+                (defender.attack - self.defense / 2).max(1)
+            } else {
+                0
+            },
+        })
+    }
+}
+
+/// Fog-safe city data on a visible tile.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VisibleCityObservation {
+    /// Stable city ID.
+    pub id: CityId,
+    /// Public owner identity for a visible city.
+    pub owner: PlayerId,
+    /// City center tile.
+    pub tile: TileId,
+    /// Public population estimate.
+    pub population: u32,
+    /// Visible district tiles that also block unit movement.
+    pub districts: Vec<TileId>,
 }
 
 /// The fog-of-war-safe projection of one unit.
@@ -2478,7 +2665,7 @@ impl Session {
         Ok(self.events.last().expect("event was just pushed"))
     }
 
-    /// Returns an observation restricted to one seat's own marker.
+    /// Projects private seat data and the board within two steps of its cities and units.
     pub fn observe(&self, seat: PlayerId) -> Result<Observation, DispatchError> {
         if !self.state.contains_player(seat) {
             return Err(DispatchError::UnknownPlayer(seat));
@@ -2521,6 +2708,69 @@ impl Session {
             .progress
             .get(&seat)
             .ok_or(DispatchError::UnknownPlayer(seat))?;
+        let visible_tiles = self.visible_tiles(seat);
+        let mut occupied: BTreeSet<_> = self.state.units.values().map(|unit| unit.tile).collect();
+        let mut construction_sites = BTreeSet::new();
+        for city in self.state.cities.values() {
+            occupied.insert(city.tile);
+            occupied.extend(city.districts.keys().copied());
+            if let Some(ProductionItem::District { tile, .. }) = city.production {
+                construction_sites.insert(tile);
+            }
+        }
+        let visible_tiles_observation = self
+            .state
+            .map
+            .as_ref()
+            .into_iter()
+            .flat_map(|map| {
+                visible_tiles.iter().filter_map(|tile| {
+                    map.tile(*tile).map(|state| VisibleTileObservation {
+                        tile: *tile,
+                        terrain: state.terrain,
+                        feature: state.feature,
+                        river: state.river,
+                        resource: state.resource,
+                        road: self.state.roads.contains(tile),
+                        occupied: occupied.contains(tile),
+                        district_reserved: construction_sites.contains(tile),
+                        neighbors: map
+                            .topology()
+                            .neighbors(*tile)
+                            .into_iter()
+                            .filter(|neighbor| visible_tiles.contains(neighbor))
+                            .collect(),
+                    })
+                })
+            })
+            .collect();
+        let visible_units = self
+            .state
+            .units
+            .values()
+            .filter(|unit| visible_tiles.contains(&unit.tile))
+            .map(VisibleUnitObservation::from)
+            .collect();
+        let visible_cities = self
+            .state
+            .cities
+            .values()
+            .filter(|city| visible_tiles.contains(&city.tile))
+            .map(|city| VisibleCityObservation {
+                id: city.id,
+                owner: city.owner,
+                tile: city.tile,
+                population: city.population,
+                districts: city
+                    .districts()
+                    .filter_map(|district| {
+                        visible_tiles
+                            .contains(&district.tile)
+                            .then_some(district.tile)
+                    })
+                    .collect(),
+            })
+            .collect();
         Ok(Observation {
             seat,
             turn: self.state.turn,
@@ -2545,12 +2795,25 @@ impl Session {
                     .collect(),
             },
             victory: self.state.victories.get(&seat).copied(),
+            visible_tiles: visible_tiles_observation,
+            visible_units,
+            visible_cities,
         })
     }
 
     /// Returns the current state hash.
     pub fn state_hash(&self) -> StateHash {
         self.state.state_hash()
+    }
+
+    /// Returns the declared winner for a referee checking after each dispatch.
+    /// Sessions continued beyond victory can contain multiple declarations.
+    /// In that case this returns the lowest seat ID.
+    pub fn winner(&self) -> Option<(PlayerId, VictoryKind)> {
+        self.state
+            .victories
+            .first_key_value()
+            .map(|(&seat, &kind)| (seat, kind))
     }
 
     /// Returns all events in sequence order.
@@ -2566,6 +2829,35 @@ impl Session {
     /// Returns the current replay log.
     pub fn replay(&self) -> &ReplayLog {
         &self.replay
+    }
+
+    fn visible_tiles(&self, seat: PlayerId) -> BTreeSet<TileId> {
+        let Some(map) = &self.state.map else {
+            return BTreeSet::new();
+        };
+        let sources = self
+            .state
+            .units
+            .values()
+            .filter(|unit| unit.owner == Some(seat))
+            .map(|unit| unit.tile)
+            .chain(
+                self.state
+                    .cities
+                    .values()
+                    .filter(|city| city.owner == seat)
+                    .map(|city| city.tile),
+            );
+        let mut tiles: BTreeSet<_> = sources.collect();
+        let mut frontier: Vec<_> = tiles.iter().copied().collect();
+        for _ in 0..2 {
+            frontier = frontier
+                .into_iter()
+                .flat_map(|tile| map.topology().neighbors(tile))
+                .filter(|tile| tiles.insert(*tile))
+                .collect();
+        }
+        tiles
     }
 }
 
@@ -2620,6 +2912,8 @@ pub enum DispatchError {
     UnitIdOverflow,
     /// A city ID was already present.
     CityAlreadyExists(CityId),
+    /// Every representable city identifier has been allocated.
+    CityIdOverflow,
     /// A city ID was absent.
     UnknownCity(CityId),
     /// A city is owned by another seat.
@@ -2689,6 +2983,7 @@ impl fmt::Display for DispatchError {
             Self::CityAlreadyExists(city) => {
                 write!(formatter, "city {} already exists", city.index())
             }
+            Self::CityIdOverflow => formatter.write_str("city ID space exhausted"),
             Self::UnknownCity(city) => write!(formatter, "unknown city {}", city.index()),
             Self::UnauthorizedCity(city) => write!(formatter, "unauthorized city {}", city.index()),
             Self::InvalidFounder(unit) => {
@@ -3135,7 +3430,7 @@ fn validate_progress_state(progress: &PlayerProgress) -> Result<(), Serializatio
             return Err(SerializationError::InvalidProgressState);
         }
     }
-    let expected_slots = (2 + (progress.civics.len() / 5) as u8).min(5);
+    let expected_slots = PlayerProgress::slots_for_civics(progress.civics.len());
     if progress.policy_slots != expected_slots {
         return Err(SerializationError::InvalidProgressState);
     }
@@ -3322,7 +3617,7 @@ fn decode_resource(reader: &mut Reader<'_>) -> Result<Option<ResourceKind>, Seri
 
 #[cfg(test)]
 mod tests {
-    use histeries_hex::FlatHex;
+    use histeries_hex::{FlatHex, TileTopology};
     use histeries_rules_core::{CityId, PlayerId};
 
     use super::{
@@ -3341,7 +3636,7 @@ mod tests {
             registry.find("city.found").unwrap().schema,
             "player:u32,city:u32,unit:u32"
         );
-        assert_eq!(registry.specs().len(), 21);
+        assert_eq!(registry.specs().len(), 23);
         assert!(
             registry
                 .validate(&Command::TurnEnd {
@@ -3365,6 +3660,36 @@ mod tests {
         assert_eq!(
             Command::decode(&research_command.encode()),
             Ok(research_command)
+        );
+    }
+
+    #[test]
+    fn settle_allocates_distinct_ids_and_replays_without_prior_city_knowledge() {
+        let first = PlayerId::new(3);
+        let second = PlayerId::new(7);
+        let map = MapState::blank(FlatHex::new(7, 1, false, false).unwrap());
+        let mut session = Session::with_map([first, second], map);
+        for (player, tile) in [(first, 0), (second, 6)] {
+            let unit = UnitId::new(tile);
+            session
+                .dispatch(Command::UnitSpawn {
+                    player,
+                    kind: UnitKind::Settler,
+                    unit,
+                    tile: super::TileId::new(tile),
+                })
+                .unwrap();
+            let settle = Command::CitySettle { player, unit };
+            assert_eq!(Command::decode(&settle.encode()), Ok(settle.clone()));
+            session.dispatch(settle).unwrap();
+        }
+        assert_ne!(
+            session.observe(first).unwrap().cities()[0].id,
+            session.observe(second).unwrap().cities()[0].id
+        );
+        assert_eq!(
+            session.replay().replay().unwrap().state_hash(),
+            session.state_hash()
         );
     }
 
@@ -3413,6 +3738,124 @@ mod tests {
         assert_eq!(session.drain_events().len(), 3);
         session.dispatch(Command::TurnEnd { player }).unwrap();
         assert_eq!(session.events()[0].sequence(), 3);
+    }
+
+    #[test]
+    fn observation_reveals_local_enemies_without_leaking_hidden_state() {
+        let player = PlayerId::new(1);
+        let enemy = PlayerId::new(2);
+        let topology = FlatHex::new(5, 5, false, false).unwrap();
+        let mut session = Session::with_map([player, enemy], MapState::blank(topology));
+        session
+            .dispatch(Command::UnitSpawn {
+                player,
+                unit: UnitId::new(1),
+                kind: UnitKind::Warrior,
+                tile: super::TileId::new(0),
+            })
+            .unwrap();
+        let adjacent = topology.neighbors(super::TileId::new(0))[0];
+        session
+            .dispatch(Command::UnitSpawn {
+                player: enemy,
+                unit: UnitId::new(2),
+                kind: UnitKind::Warrior,
+                tile: adjacent,
+            })
+            .unwrap();
+        session
+            .dispatch(Command::UnitSpawn {
+                player: enemy,
+                unit: UnitId::new(3),
+                kind: UnitKind::Warrior,
+                tile: super::TileId::new(24),
+            })
+            .unwrap();
+
+        let observation = session.observe(player).unwrap();
+        assert!(
+            observation
+                .visible_units()
+                .iter()
+                .any(|unit| unit.id == UnitId::new(2) && unit.owner == Some(enemy))
+        );
+        assert!(
+            !observation
+                .visible_units()
+                .iter()
+                .any(|unit| unit.id == UnitId::new(3))
+        );
+    }
+
+    #[test]
+    fn visible_city_projection_hides_districts_outside_fog() {
+        let player = PlayerId::new(1);
+        let enemy = PlayerId::new(2);
+        let topology = FlatHex::new(5, 5, false, false).unwrap();
+        let mut session = Session::with_map([player, enemy], MapState::blank(topology));
+        session
+            .dispatch(Command::UnitSpawn {
+                player,
+                unit: UnitId::new(1),
+                kind: UnitKind::Settler,
+                tile: super::TileId::new(0),
+            })
+            .unwrap();
+        session
+            .dispatch(Command::CityFound {
+                player,
+                city: CityId::new(1),
+                unit: UnitId::new(1),
+            })
+            .unwrap();
+        session
+            .dispatch(Command::UnitSpawn {
+                player: enemy,
+                unit: UnitId::new(2),
+                kind: UnitKind::Settler,
+                tile: super::TileId::new(24),
+            })
+            .unwrap();
+        session
+            .dispatch(Command::CityFound {
+                player: enemy,
+                city: CityId::new(2),
+                unit: UnitId::new(2),
+            })
+            .unwrap();
+        let hidden_district = super::TileId::new(3);
+        session
+            .dispatch(Command::CityBuildDistrict {
+                player,
+                city: CityId::new(1),
+                kind: DistrictKind::Campus,
+                tile: hidden_district,
+            })
+            .unwrap();
+        session
+            .state
+            .cities
+            .get_mut(&CityId::new(1))
+            .expect("city exists")
+            .production_stored = 1_000;
+        session.dispatch(Command::TurnEnd { player }).unwrap();
+        session
+            .dispatch(Command::TurnEnd { player: enemy })
+            .unwrap();
+
+        let observation = session.observe(player).unwrap();
+        assert!(
+            observation.cities()[0]
+                .districts
+                .iter()
+                .any(|district| district.tile == hidden_district)
+        );
+        assert!(
+            observation.visible_cities()[0]
+                .districts
+                .iter()
+                .all(|tile| *tile != hidden_district)
+        );
     }
 
     #[test]

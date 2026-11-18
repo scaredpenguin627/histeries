@@ -41,7 +41,7 @@ The simulation uses integers and the fixed-point representation selected in ADR-
 
 ## Threading
 
-AI planning receives an immutable observation snapshot. Player plans may run in parallel, then commands are sorted by canonical seat and command order before sequential application. Pathfinding, visibility, and yield recomputation remain pure functions over snapshots and may use rayon once those crates are introduced. Changing the thread count changes scheduling and elapsed time only.
+Each controller plans from its own seat's immutable observation. Native workers can plan distinct seats in parallel. The referee applies the resulting command streams in ascending seat order and retains the sequence of operations and unit orders within each stream. A tactical order can depend on a tile vacated earlier in the same plan. The tournament checks the session for victory after each dispatch.
 
 ## Memory
 

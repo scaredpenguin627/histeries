@@ -51,6 +51,15 @@ impl Default for PlayerProgress {
 }
 
 impl PlayerProgress {
+    /// Policy slots unlocked by the given number of completed civics.
+    pub const fn slots_for_civics(count: usize) -> u8 {
+        if count >= 15 {
+            5
+        } else {
+            2 + (count / 5) as u8
+        }
+    }
+
     /// Returns whether a technology is complete.
     pub fn has_technology(&self, id: &str) -> bool {
         self.technologies.contains(id)
