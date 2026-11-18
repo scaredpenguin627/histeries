@@ -2,7 +2,8 @@
 
 - Task: P1-01 `TileTopology` and `FlatHex` (class A)
 - Model: Codex GPT-6.2
-- Reviewer: gpt-6.2-astra (APPROVE)\n- Commit: dc13c09a `feat(hex): implement FlatHex topology`
+- Reviewer: gpt-6.2-astra (APPROVE)
+- Commit: dc13c09a `feat(hex): implement FlatHex topology`
 
 ## What changed
 
@@ -18,7 +19,7 @@ Accepted ADR-0001 through ADR-0005 after maintainer instruction. Implemented the
 | Command | Result |
 |---|---|
 | `cargo xtask ci-fast` | pass with stable GNU target, cargo-deny 0.20.2, cargo-nextest 0.9.149, wasm32, and both OHOS targets |
-| `cargo deny check` | pass; advisory fetch required `GIT_SSL_NO_VERIFY=true` because the local Schannel connection failed verification |
+| `cargo deny check` | pass; advisory fetch required a session-local Git OpenSSL backend override because the local Schannel connection failed during TLS negotiation |
 | `cargo nextest run --workspace` | 10 passed |
 | `cargo check --workspace --target wasm32-unknown-unknown` | pass |
 | `cargo check --workspace --target aarch64-unknown-linux-ohos` | pass |
@@ -35,5 +36,6 @@ P1-01 is covered by seven topology tests. The scorecard records the implementati
 ## Next
 
 P1-02: fixed-point arithmetic, named RNG streams, and deterministic state hashing.
+
 
 
