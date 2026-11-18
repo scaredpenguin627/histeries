@@ -12,3 +12,4 @@ All notable changes are recorded here.
 
 
 - Added typed rules entities, canonical yield channels, and deterministic modifiers for P1-03.
+- Added strict, provenance-aware TOML ruleset loading with base data for P1-04.

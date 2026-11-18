@@ -1,4 +1,19 @@
-[ruleset]
+schema_version = 1
 id = "base"
-version = 1
+name = "Histeries Base"
 provenance = "designed"
+
+[[units]]
+id = "scout"
+movement = 2
+
+[[units]]
+id = "settler"
+movement = 2
+
+[[modifiers]]
+id = "forest_food"
+scope = "tile"
+tags = [1]
+effect_kind = "food"
+effect_amount_raw = 1000
