@@ -11,3 +11,4 @@ All notable changes are recorded here.
 
 
 
+- Added typed rules entities, canonical yield channels, and deterministic modifiers for P1-03.

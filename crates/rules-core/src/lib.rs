@@ -142,9 +142,254 @@ fn derive_seed(master_seed: [u8; 32], name: &str) -> [u8; 32] {
     seed
 }
 
+macro_rules! typed_id {
+    ($name:ident) => {
+        /// A stable generational-arena key for a rules entity.
+        #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub struct $name(u32);
+
+        impl $name {
+            /// Creates an ID from a stable arena index.
+            pub const fn new(index: u32) -> Self {
+                Self(index)
+            }
+
+            /// Returns the stable arena index.
+            pub const fn index(self) -> u32 {
+                self.0
+            }
+        }
+    };
+}
+
+typed_id!(PlayerId);
+typed_id!(UnitId);
+typed_id!(CityId);
+typed_id!(TechnologyId);
+
+/// The yield channels understood by the pure rules layer.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[repr(usize)]
+pub enum YieldKind {
+    /// Food available for growth and support.
+    Food = 0,
+    /// Production available for construction.
+    Production = 1,
+    /// Science available for research.
+    Science = 2,
+    /// Culture available for civic progress.
+    Culture = 3,
+    /// Gold available for economic actions.
+    Gold = 4,
+    /// Faith available for spiritual actions.
+    Faith = 5,
+}
+
+impl YieldKind {
+    /// Every yield kind in canonical order.
+    pub const ALL: [Self; 6] = [
+        Self::Food,
+        Self::Production,
+        Self::Science,
+        Self::Culture,
+        Self::Gold,
+        Self::Faith,
+    ];
+
+    const fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// A fixed-point set of yields in canonical channel order.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct YieldSet([Fixed; 6]);
+
+impl YieldSet {
+    /// Returns an all-zero yield set.
+    pub const fn zero() -> Self {
+        Self([Fixed::ZERO; 6])
+    }
+
+    /// Returns the value for one channel.
+    pub const fn get(self, kind: YieldKind) -> Fixed {
+        self.0[kind.index()]
+    }
+
+    /// Returns a copy with one channel replaced.
+    pub const fn with(self, kind: YieldKind, value: Fixed) -> Self {
+        let mut values = self.0;
+        values[kind.index()] = value;
+        Self(values)
+    }
+
+    /// Adds two yield sets with overflow checking.
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        let mut values = [Fixed::ZERO; 6];
+        for kind in YieldKind::ALL {
+            values[kind.index()] = self.get(kind).checked_add(other.get(kind))?;
+        }
+        Some(Self(values))
+    }
+
+    /// Subtracts two yield sets with overflow checking.
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        let mut values = [Fixed::ZERO; 6];
+        for kind in YieldKind::ALL {
+            values[kind.index()] = self.get(kind).checked_sub(other.get(kind))?;
+        }
+        Some(Self(values))
+    }
+
+    /// Returns whether every channel is non-negative.
+    pub fn is_non_negative(self) -> bool {
+        YieldKind::ALL.iter().all(|kind| self.get(*kind).raw() >= 0)
+    }
+}
+
+impl Default for YieldSet {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
+/// The scope in which a modifier is evaluated.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ModifierScope {
+    /// Applies to a whole player.
+    Player,
+    /// Applies to one city.
+    City,
+    /// Applies to one tile.
+    Tile,
+    /// Applies to one unit.
+    Unit,
+}
+
+/// A stable content tag used by modifier conditions.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TagId(u16);
+
+impl TagId {
+    /// Creates a tag identifier.
+    pub const fn new(value: u16) -> Self {
+        Self(value)
+    }
+
+    /// Returns the numeric tag identifier.
+    pub const fn value(self) -> u16 {
+        self.0
+    }
+}
+
+/// A condition in the data-driven modifier language.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ModifierCondition {
+    /// Requires a content tag in the evaluation context.
+    HasTag(TagId),
+    /// Requires a specific evaluation scope.
+    Scope(ModifierScope),
+}
+
+/// An effect in the data-driven modifier language.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum ModifierEffect {
+    /// Adds a fixed-point amount to one yield channel.
+    AddYield {
+        /// The channel to change.
+        kind: YieldKind,
+        /// The fixed-point amount to add.
+        amount: Fixed,
+    },
+}
+
+/// A validated modifier with conditions, scope, and effect.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Modifier {
+    scope: ModifierScope,
+    conditions: Vec<ModifierCondition>,
+    effect: ModifierEffect,
+}
+
+impl Modifier {
+    /// Creates a modifier. Ruleset validation supplies canonical condition order.
+    pub fn new(
+        scope: ModifierScope,
+        conditions: Vec<ModifierCondition>,
+        effect: ModifierEffect,
+    ) -> Self {
+        Self {
+            scope,
+            conditions,
+            effect,
+        }
+    }
+
+    /// Returns the modifier scope.
+    pub const fn scope(&self) -> ModifierScope {
+        self.scope
+    }
+
+    /// Returns whether this modifier matches a context.
+    pub fn matches(&self, context: &ModifierContext) -> bool {
+        self.scope == context.scope
+            && self.conditions.iter().all(|condition| match condition {
+                ModifierCondition::HasTag(tag) => context.has_tag(*tag),
+                ModifierCondition::Scope(scope) => *scope == context.scope,
+            })
+    }
+
+    fn apply(&self, yields: YieldSet) -> Option<YieldSet> {
+        match self.effect {
+            ModifierEffect::AddYield { kind, amount } => {
+                yields.checked_add(YieldSet::zero().with(kind, amount))
+            }
+        }
+    }
+}
+
+/// The canonical context used while evaluating modifiers.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModifierContext {
+    scope: ModifierScope,
+    tags: Vec<TagId>,
+}
+
+impl ModifierContext {
+    /// Creates a context and canonicalizes its tag list.
+    pub fn new(scope: ModifierScope, tags: &[TagId]) -> Self {
+        let mut tags = tags.to_vec();
+        tags.sort_unstable();
+        tags.dedup();
+        Self { scope, tags }
+    }
+
+    fn has_tag(&self, tag: TagId) -> bool {
+        self.tags.binary_search(&tag).is_ok()
+    }
+}
+
+/// Applies matching modifiers in their supplied canonical order.
+pub fn apply_modifiers(
+    base: YieldSet,
+    modifiers: &[Modifier],
+    context: &ModifierContext,
+) -> Option<YieldSet> {
+    let mut result = base;
+    for modifier in modifiers {
+        if modifier.matches(context) {
+            result = modifier.apply(result)?;
+        }
+    }
+    Some(result)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{FIXED_SCALE, Fixed, NamedRng, RNG_ALGORITHM};
+    use super::{
+        CityId, FIXED_SCALE, Fixed, Modifier, ModifierCondition, ModifierContext, ModifierEffect,
+        ModifierScope, NamedRng, RNG_ALGORITHM, TagId, YieldKind, YieldSet, apply_modifiers,
+    };
 
     #[test]
     fn fixed_point_arithmetic_is_scaled_and_checked() {
@@ -175,5 +420,58 @@ mod tests {
         for _ in 0..128 {
             assert!(rng.next_bounded(7).unwrap() < 7);
         }
+    }
+
+    #[test]
+    fn typed_ids_are_orderable_and_stable() {
+        assert!(CityId::new(2) > CityId::new(1));
+        assert_eq!(CityId::new(7).index(), 7);
+    }
+
+    #[test]
+    fn modifiers_require_scope_and_tags() {
+        let modifier = Modifier::new(
+            ModifierScope::Tile,
+            vec![ModifierCondition::HasTag(TagId::new(4))],
+            ModifierEffect::AddYield {
+                kind: YieldKind::Food,
+                amount: Fixed::from_int(2).unwrap(),
+            },
+        );
+        let base = YieldSet::zero();
+        let matching = ModifierContext::new(ModifierScope::Tile, &[TagId::new(4), TagId::new(4)]);
+        let wrong_scope = ModifierContext::new(ModifierScope::City, &[TagId::new(4)]);
+        let wrong_tag = ModifierContext::new(ModifierScope::Tile, &[TagId::new(5)]);
+        assert_eq!(
+            apply_modifiers(base, std::slice::from_ref(&modifier), &matching)
+                .unwrap()
+                .get(YieldKind::Food)
+                .raw(),
+            2 * FIXED_SCALE
+        );
+        assert_eq!(
+            apply_modifiers(base, std::slice::from_ref(&modifier), &wrong_scope),
+            Some(base)
+        );
+        assert_eq!(apply_modifiers(base, &[modifier], &wrong_tag), Some(base));
+    }
+
+    #[test]
+    fn negative_result_is_detectable_for_yield_invariants() {
+        let modifier = Modifier::new(
+            ModifierScope::Player,
+            Vec::new(),
+            ModifierEffect::AddYield {
+                kind: YieldKind::Gold,
+                amount: Fixed::from_raw(-1),
+            },
+        );
+        let result = apply_modifiers(
+            YieldSet::zero(),
+            &[modifier],
+            &ModifierContext::new(ModifierScope::Player, &[]),
+        )
+        .unwrap();
+        assert!(!result.is_non_negative());
     }
 }
