@@ -12,7 +12,7 @@ Done when the scaffold, docs, five accepted ADRs, and both xtask gates are prese
 - [x] P0-04 (C) Architecture, clean-room, scorecard, budgets, tooling, and assets docs
 - [x] P0-05 (C) Repository metadata, licenses, contribution policy, templates, and attribution
 - [x] P0-06 (A) ADR-0001 through ADR-0005, each Accepted by the maintainer
-- [x] P0-07 (maintainer) Review the bootstrap PR, accept ADR-0001 through ADR-0005, and republish the Codex environment
+- [x] P0-07 (maintainer) Review the bootstrap PR and accept ADR-0001 through ADR-0005; environment publication is external
 
 ## Phase 1 — Headless base game
 
@@ -50,5 +50,6 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 ## Phase 5+
 
 - [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres
+
 
 
