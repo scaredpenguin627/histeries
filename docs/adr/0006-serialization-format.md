@@ -17,7 +17,7 @@ Saves and replays must remain deterministic across operating systems, thread cou
 
 ## Decision
 
-Use option 2. State, commands, and replay logs have independent magic bytes, format version 1, explicit little-endian integer fields, canonical BTreeMap ordering, and strict trailing-byte rejection. Replay logs contain an initial state snapshot followed by length-prefixed command documents.
+Use option 2. State, commands, and replay logs have independent magic bytes and explicit little-endian integer fields, canonical BTreeMap ordering, and strict trailing-byte rejection. Replay logs contain an initial state snapshot followed by length-prefixed command documents. Current state and replay documents use version 4 after the P1-09 progression fields, while command documents use version 3 after the research and policy command family.
 
 ## Consequences
 

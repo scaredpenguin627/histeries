@@ -61,8 +61,24 @@ The first topology implementation uses stable row-major `TileId` values and keep
 
 ## Save and replay format
 
-ADR-0006 defines the custom binary boundary. State, command, and replay documents carry magic bytes and version 1. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
+ADR-0006 defines the custom binary boundary. State and replay documents carry magic bytes and version 4, while command documents carry version 3. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
 
 ## Map generation
 
 P1-06 uses `FlatHex` and a named `mapgen` stream to generate terrain, features, river edges, and resources in stable tile-ID order. Editor commands mutate map data only through `sim`, and map serialization rejects incompatible terrain edits and non-canonical tile order.
+
+## Unit simulation
+
+Units are stored in stable `UnitId` order. Movement uses topology neighbors, terrain costs, roads, and enemy ZOC. Combat uses integer strength, deterministic counterattacks, capped healing, one-time promotions, and explicit barbarian ownership. Unit projections in observations contain only the observing seat's own units.
+
+## City simulation
+
+Cities are stored in stable `CityId` order with integer food, housing, production, one queued order, graph-validated districts, and canonical building sets. Founding consumes an owned settler. Turn advancement applies food growth and production in city-ID order. District adjacency is computed through topology neighbors, and produced units use the first sorted free traversable tile adjacent to the city center. Builder units carry three permanent charges, with each road consuming one charge.
+
+## Progression and victories
+
+Technology and civic tables are validated TOML DAGs. Each seat has one selected technology and civic, integer progress, completed node sets, policy slots, active policies, and a victory state. Turn advancement accumulates owned-city science and culture plus active policy bonuses in sorted player order. Science and domination checks run after progression updates, and observations expose only the observing seat's progression state.
+
+## CLI boundary
+
+The CLI uses `Session::dispatch` for every state change and `Observation` or state snapshots for reads. It persists the simulation's versioned state and replay formats, renders maps from stable tile order, and has no independent rules or serialization layer.

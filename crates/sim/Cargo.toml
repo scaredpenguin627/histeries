@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 histeries-hex = { path = "../hex" }
 histeries-rules-core = { path = "../rules-core" }
+histeries-ruleset = { path = "../ruleset" }
 
 [lib]
 path = "src/lib.rs"

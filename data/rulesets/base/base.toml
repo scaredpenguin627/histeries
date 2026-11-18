@@ -6,10 +6,414 @@ provenance = "designed"
 [[units]]
 id = "scout"
 movement = 2
+production_cost = 4
 
 [[units]]
 id = "settler"
 movement = 2
+production_cost = 12
+
+[[units]]
+id = "warrior"
+movement = 2
+production_cost = 6
+
+[[units]]
+id = "archer"
+movement = 2
+production_cost = 8
+
+[[units]]
+id = "builder"
+movement = 2
+production_cost = 10
+
+[[technologies]]
+id = "tech_01"
+cost = 10
+prerequisites = []
+
+[[technologies]]
+id = "tech_02"
+cost = 12
+prerequisites = ["tech_01"]
+
+[[technologies]]
+id = "tech_03"
+cost = 14
+prerequisites = ["tech_01"]
+
+[[technologies]]
+id = "tech_04"
+cost = 16
+prerequisites = ["tech_02"]
+
+[[technologies]]
+id = "tech_05"
+cost = 18
+prerequisites = ["tech_03"]
+
+[[technologies]]
+id = "tech_06"
+cost = 20
+prerequisites = ["tech_04", "tech_05"]
+
+[[technologies]]
+id = "tech_07"
+cost = 22
+prerequisites = ["tech_06"]
+
+[[technologies]]
+id = "tech_08"
+cost = 24
+prerequisites = ["tech_06"]
+
+[[technologies]]
+id = "tech_09"
+cost = 26
+prerequisites = ["tech_07"]
+
+[[technologies]]
+id = "tech_10"
+cost = 28
+prerequisites = ["tech_08"]
+
+[[technologies]]
+id = "tech_11"
+cost = 30
+prerequisites = ["tech_09", "tech_10"]
+
+[[technologies]]
+id = "tech_12"
+cost = 32
+prerequisites = ["tech_11"]
+
+[[technologies]]
+id = "tech_13"
+cost = 34
+prerequisites = ["tech_11"]
+
+[[technologies]]
+id = "tech_14"
+cost = 36
+prerequisites = ["tech_12"]
+
+[[technologies]]
+id = "tech_15"
+cost = 38
+prerequisites = ["tech_13"]
+
+[[technologies]]
+id = "tech_16"
+cost = 40
+prerequisites = ["tech_14", "tech_15"]
+
+[[technologies]]
+id = "tech_17"
+cost = 42
+prerequisites = ["tech_16"]
+
+[[technologies]]
+id = "tech_18"
+cost = 44
+prerequisites = ["tech_16"]
+
+[[technologies]]
+id = "tech_19"
+cost = 46
+prerequisites = ["tech_17"]
+
+[[technologies]]
+id = "tech_20"
+cost = 48
+prerequisites = ["tech_18"]
+
+[[technologies]]
+id = "tech_21"
+cost = 50
+prerequisites = ["tech_19", "tech_20"]
+
+[[technologies]]
+id = "tech_22"
+cost = 52
+prerequisites = ["tech_21"]
+
+[[technologies]]
+id = "tech_23"
+cost = 54
+prerequisites = ["tech_21"]
+
+[[technologies]]
+id = "tech_24"
+cost = 56
+prerequisites = ["tech_22"]
+
+[[technologies]]
+id = "tech_25"
+cost = 58
+prerequisites = ["tech_23"]
+
+[[civics]]
+id = "civic_01"
+cost = 10
+prerequisites = []
+
+[[civics]]
+id = "civic_02"
+cost = 12
+prerequisites = ["civic_01"]
+
+[[civics]]
+id = "civic_03"
+cost = 14
+prerequisites = ["civic_01"]
+
+[[civics]]
+id = "civic_04"
+cost = 16
+prerequisites = ["civic_02"]
+
+[[civics]]
+id = "civic_05"
+cost = 18
+prerequisites = ["civic_03"]
+
+[[civics]]
+id = "civic_06"
+cost = 20
+prerequisites = ["civic_04", "civic_05"]
+
+[[civics]]
+id = "civic_07"
+cost = 22
+prerequisites = ["civic_06"]
+
+[[civics]]
+id = "civic_08"
+cost = 24
+prerequisites = ["civic_06"]
+
+[[civics]]
+id = "civic_09"
+cost = 26
+prerequisites = ["civic_07"]
+
+[[civics]]
+id = "civic_10"
+cost = 28
+prerequisites = ["civic_08"]
+
+[[civics]]
+id = "civic_11"
+cost = 30
+prerequisites = ["civic_09", "civic_10"]
+
+[[civics]]
+id = "civic_12"
+cost = 32
+prerequisites = ["civic_11"]
+
+[[civics]]
+id = "civic_13"
+cost = 34
+prerequisites = ["civic_11"]
+
+[[civics]]
+id = "civic_14"
+cost = 36
+prerequisites = ["civic_12"]
+
+[[civics]]
+id = "civic_15"
+cost = 38
+prerequisites = ["civic_13"]
+
+[[civics]]
+id = "civic_16"
+cost = 40
+prerequisites = ["civic_14", "civic_15"]
+
+[[civics]]
+id = "civic_17"
+cost = 42
+prerequisites = ["civic_16"]
+
+[[civics]]
+id = "civic_18"
+cost = 44
+prerequisites = ["civic_16"]
+
+[[civics]]
+id = "civic_19"
+cost = 46
+prerequisites = ["civic_17"]
+
+[[civics]]
+id = "civic_20"
+cost = 48
+prerequisites = ["civic_18"]
+
+[[civics]]
+id = "civic_21"
+cost = 50
+prerequisites = ["civic_19", "civic_20"]
+
+[[civics]]
+id = "civic_22"
+cost = 52
+prerequisites = ["civic_21"]
+
+[[civics]]
+id = "civic_23"
+cost = 54
+prerequisites = ["civic_21"]
+
+[[civics]]
+id = "civic_24"
+cost = 56
+prerequisites = ["civic_22"]
+
+[[civics]]
+id = "civic_25"
+cost = 58
+prerequisites = ["civic_23"]
+
+[[policies]]
+id = "policy_growth"
+required_civic = "civic_02"
+
+[[policies]]
+id = "policy_defense"
+required_civic = "civic_04"
+
+[[policies]]
+id = "policy_trade"
+required_civic = "civic_06"
+
+[[policies]]
+id = "policy_science"
+required_civic = "civic_08"
+science_bonus = 1
+
+[[policies]]
+id = "policy_culture"
+required_civic = "civic_10"
+culture_bonus = 1
+
+[[policies]]
+id = "policy_industry"
+required_civic = "civic_12"
+
+[[districts]]
+id = "city_center"
+production_cost = 60
+housing_capacity = 2
+
+[[districts]]
+id = "campus"
+production_cost = 80
+housing_capacity = 0
+
+[[districts]]
+id = "industrial_zone"
+production_cost = 100
+housing_capacity = 0
+production_bonus = 1
+
+[[districts]]
+id = "harbor"
+production_cost = 90
+housing_capacity = 0
+
+[[buildings]]
+id = "granary"
+district = "city_center"
+production_cost = 70
+housing = 2
+maintenance = 1
+food_bonus = 1
+
+[[buildings]]
+id = "monument"
+district = "city_center"
+production_cost = 60
+housing = 0
+maintenance = 1
+culture_bonus = 1
+
+[[buildings]]
+id = "barracks"
+district = "city_center"
+production_cost = 80
+housing = 0
+maintenance = 1
+
+[[buildings]]
+id = "library"
+district = "campus"
+production_cost = 90
+housing = 0
+maintenance = 1
+science_bonus = 2
+
+[[buildings]]
+id = "university"
+district = "campus"
+production_cost = 140
+housing = 0
+maintenance = 2
+science_bonus = 3
+
+[[buildings]]
+id = "workshop"
+district = "industrial_zone"
+production_cost = 100
+housing = 0
+maintenance = 1
+production_bonus = 2
+
+[[buildings]]
+id = "factory"
+district = "industrial_zone"
+production_cost = 160
+housing = 0
+maintenance = 2
+production_bonus = 3
+
+[[buildings]]
+id = "armory"
+district = "industrial_zone"
+production_cost = 120
+housing = 0
+maintenance = 2
+
+[[buildings]]
+id = "lighthouse"
+district = "harbor"
+production_cost = 80
+housing = 1
+maintenance = 1
+
+[[buildings]]
+id = "market"
+district = "harbor"
+production_cost = 90
+housing = 0
+maintenance = 1
+
+[[buildings]]
+id = "shipyard"
+district = "harbor"
+production_cost = 130
+housing = 0
+maintenance = 2
+
+[[buildings]]
+id = "warehouse"
+district = "harbor"
+production_cost = 100
+housing = 2
+maintenance = 1
 
 [[modifiers]]
 id = "forest_food"

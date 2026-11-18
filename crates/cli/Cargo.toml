@@ -8,6 +8,11 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+histeries-hex = { path = "../hex" }
+histeries-rules-core = { path = "../rules-core" }
+histeries-sim = { path = "../sim" }
+
 [[bin]]
 name = "histeries"
 path = "src/main.rs"

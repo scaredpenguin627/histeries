@@ -1,3 +1,3 @@
 # Base ruleset
 
-Phase 0 contains no gameplay content. Phase 1 will add original TOML ruleset tables here.
+The base ruleset contains original units, technology and civic progression DAGs, policy options, districts, buildings, and modifiers. All entries use the validated schema and designed provenance.

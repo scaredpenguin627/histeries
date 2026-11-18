@@ -39,6 +39,11 @@ version = "0.1.0"
 [[package]]
 name = "histeries-cli"
 version = "0.1.0"
+dependencies = [
+ "histeries-hex",
+ "histeries-rules-core",
+ "histeries-sim",
+]
 
 [[package]]
 name = "histeries-client"
@@ -78,6 +83,7 @@ version = "0.1.0"
 dependencies = [
  "histeries-hex",
  "histeries-rules-core",
+ "histeries-ruleset",
 ]
 
 [[package]]

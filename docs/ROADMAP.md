@@ -24,10 +24,10 @@ The first implementation phase is split into PR-sized work. Class A tasks are ar
 - [x] P1-04 (B) Load validated TOML rulesets and ship the base data tables
 - [x] P1-05 (A) Build simulation state, command registry, observations, events, custom serialization, and replay
 - [x] P1-06 (B) Add deterministic map generation, terrain, features, rivers, resources, and the editor command family
-- [ ] P1-07 (B) Add units, movement costs, roads, zones of control, combat, healing, promotions, and barbarians
-- [ ] P1-08 (B) Add cities, growth caps, production, districts, buildings, and builders
-- [ ] P1-09 (C) Add technology and civic data, policy slots, domination and science victory checks
-- [ ] P1-10 (C) Add CLI `new`, `step`, `run`, `replay`, `map`, and scenario-editor commands
+- [x] P1-07 (B) Add units, movement costs, roads, zones of control, combat, healing, promotions, and barbarians
+- [x] P1-08 (B) Add cities, growth caps, production, districts, buildings, and builders
+- [x] P1-09 (C) Add technology and civic data, policy slots, domination and science victory checks
+- [x] P1-10 (C) Add CLI `new`, `step`, `run`, `replay`, `map`, and scenario-editor commands
 - [ ] P1-11 (A) Add strategic, operational, and tactical AI over the observation API
 - [ ] P1-12 (A) Add determinism, replay, memory, and performance gates for 2–8 player self-play
 
@@ -50,6 +50,7 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 ## Phase 5+
 
 - [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres
+
 
 
 

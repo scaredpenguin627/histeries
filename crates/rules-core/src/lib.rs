@@ -166,6 +166,7 @@ typed_id!(PlayerId);
 typed_id!(UnitId);
 typed_id!(CityId);
 typed_id!(TechnologyId);
+typed_id!(CivicId);
 
 /// The yield channels understood by the pure rules layer.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
