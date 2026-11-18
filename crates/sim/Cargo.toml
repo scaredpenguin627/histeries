@@ -8,6 +8,9 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[dependencies]
+histeries-rules-core = { path = "../rules-core" }
+
 [lib]
 path = "src/lib.rs"
 

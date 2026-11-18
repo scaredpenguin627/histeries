@@ -22,7 +22,7 @@ The first implementation phase is split into PR-sized work. Class A tasks are ar
 - [x] P1-02 (A) Add fixed-point arithmetic, named RNG streams, and deterministic state hashing
 - [x] P1-03 (B) Add rules-core entities, modifiers, yields, and invariant tests
 - [x] P1-04 (B) Load validated TOML rulesets and ship the base data tables
-- [ ] P1-05 (A) Build simulation state, command registry, observations, events, serialization, and replay
+- [x] P1-05 (A) Build simulation state, command registry, observations, events, custom serialization, and replay
 - [ ] P1-06 (B) Add map generation, terrain, features, rivers, resources, and the editor command family
 - [ ] P1-07 (B) Add units, movement costs, roads, zones of control, combat, healing, promotions, and barbarians
 - [ ] P1-08 (B) Add cities, growth caps, production, districts, buildings, and builders
@@ -50,6 +50,7 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 ## Phase 5+
 
 - [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres
+
 
 
 

@@ -75,6 +75,9 @@ dependencies = [
 [[package]]
 name = "histeries-sim"
 version = "0.1.0"
+dependencies = [
+ "histeries-rules-core",
+]
 
 [[package]]
 name = "histeries-xtask"

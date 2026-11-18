@@ -58,3 +58,7 @@ The first topology implementation uses stable row-major `TileId` values and keep
 ## Deterministic arithmetic and hashing
 
 `rules-core` uses checked signed fixed-point values with scale 1,000. Named streams use the pinned ChaCha8 algorithm and stable stream labels. `sim` hashes canonical length-prefixed fields with a versioned little-endian FNV-1a algorithm.
+
+## Save and replay format
+
+ADR-0006 defines the custom binary boundary. State, command, and replay documents carry magic bytes and version 1. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
