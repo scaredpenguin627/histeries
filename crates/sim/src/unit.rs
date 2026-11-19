@@ -25,7 +25,8 @@ pub enum UnitKind {
 }
 
 impl UnitKind {
-    pub(crate) const fn from_u8(value: u8) -> Option<Self> {
+    /// Decodes a persisted unit archetype tag.
+    pub const fn from_u8(value: u8) -> Option<Self> {
         Some(match value {
             0 => Self::Warrior,
             1 => Self::Archer,

@@ -2,9 +2,12 @@
 
 The gates enforce the following budgets. Memory limits are provisional P1-12 regression thresholds. Bounds use integer arithmetic. Reported ratios and wall-clock measurements are diagnostic.
 
+The 900-second fast-gate reference is the 4-vCPU PR runner specified in AGENTS.md. The Tier A Windows target is `x86_64-pc-windows-msvc`. The same wall-time limit is enforced by local `ci-fast` runs. Local measurements identify the host toolchain and whether Cargo build artifacts were present when the run started.
+
 | Measure | Limit | Fixture |
 | --- | ---: | --- |
 | Fast gate wall time | Under 15 minutes | PR, target runner 4 vCPU |
+| Scenario editor history | At most 33 snapshots and 16 MiB combined, retaining the current position even if it alone exceeds 16 MiB | Local map and scenario authoring |
 | Planning latency | Per-game p95 at most 250 ms | Fast, both worker configurations |
 | Nightly wall time | 2 hours per seed shard | Nightly |
 | Weekly wall time | 6 hours per shard | Weekly |

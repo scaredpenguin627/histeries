@@ -6,6 +6,10 @@ The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-1
 
 The final native-client fast gate passed all 140 tests in 152.659 seconds locally, including nine client tests. Four session tests cover fog, rejected orders, deterministic AI turns, save/load, victory and starting units across 32 seeds. Four presenter tests exercise camera geometry, wide and compact layouts, selection and a rejected move followed by a successful retry. One desktop persistence test opens a replaced save and resumes its last saved round. A seed-7 Windows wgpu run read back a 1,500 × 1,000 PNG from the native surface. The seven MCP wire regressions and the existing CLI suite passed after extracting the shared local match host. [Native client report](sessions/2026-11-19-phase3-client.md)
 
+### Scenario editor
+
+On Windows GNU, editor revision `68fcc0d3e107` passed the 900-second fast gate in 859.427 s from an empty Cargo target and in 62.291 s with warm artifacts. All 151 tests, 34 parity checks and 1,200 round hashes passed. Under the same clean-build settings the pre-editor baseline `696c8c2d2929` took 934.900 s immediately before the editor and 913.207 s immediately after it. Both baseline runs completed their functional checks and exceeded the wall-time limit. Earlier editor revisions also exceeded that budget. [Scenario editor report](sessions/2026-11-19-phase3-editor.md)
+
 ## Phase 2 measurements · 2026-11-19
 
 Three-seat stdio planning matched the expected unit positions and hit points on live advancement, save/resume and replay. [Regression results](sessions/2026-11-19-stdio-bot-snapshot.md)

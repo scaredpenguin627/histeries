@@ -33,7 +33,8 @@ pub enum RiverDirection {
 }
 
 impl RiverDirection {
-    pub(crate) const fn from_u8(value: u8) -> Option<Self> {
+    /// Decodes a persisted river direction tag.
+    pub const fn from_u8(value: u8) -> Option<Self> {
         Some(match value {
             0 => Self::NorthEast,
             1 => Self::East,

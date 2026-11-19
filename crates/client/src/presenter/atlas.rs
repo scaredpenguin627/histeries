@@ -5,7 +5,7 @@ use eframe::egui::{
 };
 use histeries_hex::Embedding;
 use histeries_sim::{
-    Feature, Observation, ResourceKind, Terrain, UnitKind, VisibleTileObservation,
+    BoardObservation, Feature, ResourceKind, Terrain, UnitKind, VisibleTileObservation,
 };
 
 use super::visible;
@@ -19,6 +19,7 @@ const HALF_WIDTH: f32 = 0.866_025_4;
 pub(super) struct Camera {
     pub(super) center: Vec2,
     pub(super) radius: f32,
+    pub(super) min_radius: f32,
 }
 
 impl Default for Camera {
@@ -26,6 +27,7 @@ impl Default for Camera {
         Self {
             center: Vec2::ZERO,
             radius: 48.0,
+            min_radius: 15.0,
         }
     }
 }
@@ -39,7 +41,7 @@ impl Camera {
         viewport.center() + (Self::world(point) - self.center) * self.radius
     }
 
-    pub(super) fn fit(&mut self, view: &Observation, viewport: Rect) {
+    pub(super) fn fit(&mut self, view: &BoardObservation, viewport: Rect) {
         let mut bounds = Rect::NOTHING;
         for tile in view.visible_tiles() {
             bounds.extend_with(Self::world(tile.embedding).to_pos2());
@@ -51,12 +53,12 @@ impl Camera {
         let fraction = if viewport.width() < 500.0 { 0.80 } else { 0.68 };
         let scale =
             (viewport.width() / footprint.width()).min(viewport.height() / footprint.height());
-        self.radius = (fraction * scale).clamp(15.0, 88.0);
+        self.radius = (fraction * scale).clamp(self.min_radius, 88.0);
         self.center = footprint.center().to_vec2();
     }
 
     pub(super) fn zoom(&mut self, factor: f32, at: Vec2) {
-        let radius = (self.radius * factor).clamp(15.0, 88.0);
+        let radius = (self.radius * factor).clamp(self.min_radius, 88.0);
         self.center += at * (self.radius.recip() - radius.recip());
         self.radius = radius;
     }
@@ -233,7 +235,54 @@ fn owner_color(friendly: bool) -> Color32 {
     }
 }
 
-pub(super) fn occupants(painter: &Painter, rect: Rect, observation: &Observation, camera: &Camera) {
+pub(super) fn surface(
+    ui: &mut egui::Ui,
+    view: &BoardObservation,
+    camera: &mut Camera,
+) -> (egui::Response, Painter, Option<histeries_hex::TileId>) {
+    let (response, painter) = ui.allocate_painter(
+        ui.available_size().max(vec2(1.0, 1.0)),
+        egui::Sense::click_and_drag(),
+    );
+    let rect = response.rect;
+    fog(&painter, rect);
+    let pointer = response
+        .interact_pointer_pos()
+        .or_else(|| response.hover_pos());
+    if let Some(at) = pointer {
+        let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+        camera.zoom((scroll * 0.003).exp() * pinch, at - rect.center());
+    }
+    if response.dragged() {
+        camera.center -= response.drag_delta() / camera.radius;
+    }
+    let radius = camera.radius;
+    let mut hovered = None;
+    for tile in view.visible_tiles() {
+        let center = camera.project(tile.embedding, rect);
+        if rect.expand(radius).contains(center) {
+            ground(&painter, tile, center, radius);
+            if pointer.is_some_and(|at| contains(center, radius, at)) {
+                hovered = Some(tile.tile);
+            }
+        }
+    }
+    for tile in view.visible_tiles().iter().filter(|t| t.river.is_some()) {
+        let center = camera.project(tile.embedding, rect);
+        if rect.expand(radius).contains(center) {
+            river(&painter, tile, center, radius);
+        }
+    }
+    (response, painter, hovered)
+}
+
+pub(super) fn occupants(
+    painter: &Painter,
+    rect: Rect,
+    observation: &BoardObservation,
+    camera: &Camera,
+    highlighted_seat: histeries_rules_core::PlayerId,
+) {
     let radius = camera.radius;
     let locate = |tile| {
         visible(observation, tile)
@@ -254,7 +303,7 @@ pub(super) fn occupants(painter: &Painter, rect: Rect, observation: &Observation
                 .map(|point| at + point * radius);
                 painter.add(Shape::convex_polygon(
                     sign.to_vec(),
-                    owner_color(city.owner == observation.seat()),
+                    owner_color(city.owner == highlighted_seat),
                     Stroke::new(1.2, PAPER),
                 ));
             }
@@ -263,7 +312,7 @@ pub(super) fn occupants(painter: &Painter, rect: Rect, observation: &Observation
             continue;
         };
         let at = center - vec2(0.0, radius * 0.32);
-        let color = owner_color(city.owner == observation.seat());
+        let color = owner_color(city.owner == highlighted_seat);
         let points = [
             (-0.30, 0.16),
             (-0.30, -0.1),
@@ -320,7 +369,7 @@ pub(super) fn occupants(painter: &Painter, rect: Rect, observation: &Observation
             0.25
         };
         let at = center + vec2(x, 0.16) * radius;
-        let color = owner_color(unit.owner == Some(observation.seat()));
+        let color = owner_color(unit.owner == Some(highlighted_seat));
         if unit.kind == UnitKind::Warrior {
             let shield = [
                 (-0.25, -0.22),

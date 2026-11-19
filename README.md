@@ -51,3 +51,9 @@ p95 measures both seats together. An error or panic fails the tournament and
 suppresses Elo and significance.
 
 Start a playable agent session with `histeries mcp --players 2 --seed 7`. To host an edited save, use `histeries mcp --state state.hst`. The [MCP guide](docs/mcp.md) covers transports, credentials, resources, tools and replay. Use `new --setup empty` for a blank scenario or pass `--map-ruleset PATH` to select a generation profile.
+
+### Scenario editor
+
+The first time you open **Game → Scenario editor**, the editor copies the current game. Reopening the editor returns to your last draft, even if you have advanced the game. The **Scenario** menu can open an existing `.hst` file or create a blank board. Choose **Scenario → Copy current game into editor** to replace the draft with a fresh copy. Creating, opening or copying a scenario replaces the current draft and clears its undo history when confirmed. The file dialog remembers separate game and scenario paths, initially `histeries.hst` and `scenario.hst`. Choose a brush, select the owning seat for units or cities, then click a tile. A road uses a builder belonging to the selected seat on that tile. **Undo** and **Redo** step through recent edits. Use Undo to remove a placed unit, city or road while its checkpoint is retained.
+
+Choose **Scenario → Playtest scenario** to play the draft with normal fog of war. Both **Playtest** menu choices end the playtest and discard its moves. Choose **End playtest and edit scenario** to return to the draft, or **End playtest and return to game** to resume the original game. Starting a new game or opening a different game closes its editor draft. **Save scenario** writes a standard `.hst` file for the desktop client, CLI or MCP server.

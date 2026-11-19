@@ -1,6 +1,7 @@
 //! Command authorization and bounded history for interactive matches.
 use crate::{
-    Command, MatchObservation, Observation, PlayerId, ProductionItem, ReplayLog, Session, Viewpoint,
+    BoardObservation, Command, DispatchError, MatchObservation, Observation, PlayerId,
+    ProductionItem, ReplayLog, Session, Viewpoint,
 };
 use std::collections::{BTreeMap, VecDeque};
 
@@ -8,6 +9,7 @@ const HISTORY: usize = 32;
 const ORDERS_PER_SEAT: usize = 512;
 
 /// A shared interactive match, with one bounded replay window for all seats.
+#[derive(Clone)]
 pub struct MatchHost {
     session: Session,
     orders: BTreeMap<PlayerId, usize>,
@@ -29,6 +31,16 @@ impl MatchHost {
     /// Reads the hosted session through its public interface.
     pub fn session(&self) -> &Session {
         &self.session
+    }
+
+    /// Projects every tile of the locally owned scenario. Remote seat and spectator
+    /// readers receive their authorized match views through the session instead.
+    pub(crate) fn observe_editor(&self, seat: PlayerId) -> Result<BoardObservation, DispatchError> {
+        let map = self.session.editor_map(seat)?;
+        Ok(self
+            .session
+            .state
+            .project_board(&map.tiles().map(|(id, _)| id).collect()))
     }
 
     /// Reconstructs the authorized view at a retained round boundary.
@@ -61,6 +73,24 @@ impl MatchHost {
             return Err("target is unavailable to this seat".into());
         }
         self.dispatch_as_editor(seat, command)
+    }
+
+    /// Applies an editor batch atomically. Invalid commands and invalid resulting saves
+    /// discard the entire candidate, including its events, order counts and replay.
+    pub(crate) fn dispatch_editor_batch(
+        &mut self,
+        player: PlayerId,
+        commands: impl IntoIterator<Item = Command>,
+    ) -> Result<Vec<u8>, String> {
+        self.session.editor_map(player).map_err(|e| e.to_string())?;
+        let mut staged = self.clone();
+        for command in commands {
+            staged.dispatch_as_editor(player, command)?;
+        }
+        let bytes = staged.session.save_bytes();
+        Session::from_save_bytes(&bytes).map_err(|e| e.to_string())?;
+        *self = staged;
+        Ok(bytes)
     }
 
     /// Dispatches an order bound to an authorized host editor, including scenario edits.
@@ -155,5 +185,111 @@ fn visible_targets(view: &Observation, command: &Command) -> bool {
         | Command::EditorSetRiver { .. }
         | Command::EditorSetResource { .. }
         | Command::EditorSetMarker { .. } => false,
+    }
+}
+
+#[cfg(test)]
+mod editor_tests {
+    use super::*;
+    use crate::{MapState, Terrain};
+    use histeries_hex::{FlatHex, TileId};
+
+    #[test]
+    fn only_the_host_editor_projects_unseen_tiles() {
+        let seat = PlayerId::new(1);
+        let map = MapState::blank(FlatHex::new(5, 4, false, false).unwrap());
+        let host = MatchHost::new(Session::with_map([seat], map));
+        let private = host.session().observe(seat).unwrap();
+        assert!(private.visible_tiles().is_empty());
+        let board = host.observe_editor(seat).unwrap();
+        assert_eq!(board.visible_tiles().len(), 20);
+        assert_eq!(host.session().observe(seat).unwrap(), private);
+        let stranger = PlayerId::new(99);
+        assert_eq!(
+            host.observe_editor(stranger),
+            Err(DispatchError::UnknownPlayer(stranger))
+        );
+        assert_eq!(
+            host.session().observe(stranger),
+            Err(DispatchError::UnknownPlayer(stranger))
+        );
+        let empty = MatchHost::new(Session::new([seat]));
+        assert_eq!(empty.observe_editor(seat), Err(DispatchError::NoMap));
+    }
+
+    #[test]
+    fn accepted_editor_replay_starts_at_the_pre_edit_save_and_reproduces_the_result() {
+        let seat = PlayerId::new(7);
+        let map = MapState::blank(FlatHex::new(3, 2, false, false).unwrap());
+        let mut session = Session::with_map([seat], map);
+        session
+            .dispatch(Command::EditorSetMarker {
+                player: seat,
+                value: 9,
+            })
+            .unwrap();
+        let before = session.save_bytes();
+        let mut host = MatchHost::new(session);
+        let tile = TileId::new(2);
+        let batch = [
+            Command::EditorSetTerrain {
+                player: seat,
+                tile,
+                terrain: Terrain::Hill,
+            },
+            Command::EditorSetMarker {
+                player: seat,
+                value: 13,
+            },
+        ];
+        let after = host.dispatch_editor_batch(seat, batch.clone()).unwrap();
+        let log = ReplayLog::decode(&host.session().replay().encode()).unwrap();
+        assert_eq!(log.commands(), batch);
+        let mut playback = log.playback_session();
+        assert_eq!(playback.save_bytes(), before);
+        for command in log.commands() {
+            playback.dispatch(command.clone()).unwrap();
+        }
+        assert_eq!(playback.save_bytes(), after);
+        assert_eq!(log.replay().unwrap().encode(), after);
+    }
+
+    #[test]
+    fn rejected_editor_batch_preserves_the_hosts_state_order_counts_and_replay() {
+        let one = PlayerId::new(1);
+        let two = PlayerId::new(2);
+        let mut host = MatchHost::new(Session::with_map(
+            [one, two],
+            MapState::blank(FlatHex::new(3, 2, false, false).unwrap()),
+        ));
+        host.dispatch_editor_batch(
+            one,
+            [Command::EditorSetMarker {
+                player: one,
+                value: 8,
+            }],
+        )
+        .unwrap();
+        host.dispatch(two, Command::TurnEnd { player: two })
+            .unwrap();
+        let before = host.session().save_bytes();
+        let replay = host.session().replay().encode();
+        let orders = host.orders.clone();
+        let batch = [
+            Command::TurnEnd { player: one },
+            Command::EditorSetTerrain {
+                player: one,
+                tile: TileId::new(99),
+                terrain: Terrain::Hill,
+            },
+        ];
+        assert!(host.dispatch_editor_batch(one, batch).is_err());
+        assert_eq!(host.session().save_bytes(), before);
+        assert_eq!(host.session().replay().encode(), replay);
+        assert_eq!(host.orders, orders);
+        assert!(host.history.is_empty());
+        host.dispatch(one, Command::TurnEnd { player: one })
+            .unwrap();
+        assert_eq!(host.history.len(), 1);
     }
 }
