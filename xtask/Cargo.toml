@@ -9,6 +9,10 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+histeries-hex = { path = "../crates/hex" }
+histeries-rules-core = { path = "../crates/rules-core" }
+histeries-sim = { path = "../crates/sim" }
+serde.workspace = true
 serde_json = "=1.0.154"
 
 [[bin]]

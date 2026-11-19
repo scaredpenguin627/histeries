@@ -30,6 +30,7 @@ jobs:
           path: |
             target/gates/fast.jsonl
             target/gates/ci-fast.json
+            target/gates/parity.json
       - name: Measure paired games against greedy
         if: runner.os == 'Linux'
         shell: bash
@@ -37,12 +38,20 @@ jobs:
           set -o pipefail
           cargo run --locked --release -p histeries-cli --bin histeries -- tournament --opponent greedy --seed 20000 --seeds 32 --turns 500 | tee p1-11-tournament.txt
           awk '/^games=64 / { for (i=1; i<=NF; ++i) if ($i ~ /^win_bp=/) {split($i,a,"="); passed=(a[2]+0 >= 7500)} } END { exit !passed }' p1-11-tournament.txt
+      - name: Compare with the previous AI on paired seats
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --locked --release -p histeries-cli --bin histeries -- tournament --opponent v1 --seed 40000 --seeds 32 --workers 8 --turns 500 | tee phase2-v1-tournament.txt
       - name: Attach tournament outcomes and final hashes
         if: always() && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: p1-11-tournament
-          path: p1-11-tournament.txt
+          path: |
+            p1-11-tournament.txt
+            phase2-v1-tournament.txt
           if-no-files-found: ignore
 
   compare-hashes:

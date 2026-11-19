@@ -83,7 +83,7 @@ impl SettlementMap<'_> {
     fn choose(&self, settler: &UnitObservation, policy: &mut Policy<'_>) -> Option<Vec<TileId>> {
         let choices = self.reachable_sites(settler);
         let (_, path) = match policy {
-            Policy::Layered(_) => choices
+            Policy::Layered(..) => choices
                 .into_iter()
                 .rev()
                 .max_by_key(|(site, _)| self.site_value(*site, settler.tile))?,
@@ -239,7 +239,7 @@ mod tests {
             let (commands, sites) = plan_settlers(
                 &observation,
                 &mut operations,
-                &mut Policy::Layered(crate::VictoryObjective::Science),
+                &mut Policy::Layered(crate::VictoryObjective::Science, crate::PlannerVersion::V2),
             );
             assert_eq!(sites, BTreeSet::from([TileId::new(expected)]));
             assert!(operations.contains(&Operation::SettlementSite(
@@ -274,7 +274,7 @@ mod tests {
         let (commands, sites) = plan_settlers(
             &observation,
             &mut operations,
-            &mut Policy::Layered(crate::VictoryObjective::Science),
+            &mut Policy::Layered(crate::VictoryObjective::Science, crate::PlannerVersion::V2),
         );
         assert_eq!(sites.len(), 3);
         assert!(sites.contains(&TileId::new(1))); // Enemy control forbids leaving via tile two.

@@ -29,8 +29,13 @@ histeries editor state.hst set-terrain --player 1 --tile 4 --value plains
 Use `--replay-output PATH` with `new`, `step`, `run`, or `editor` to write a replay log.
 
 Run `histeries tournament --opponent greedy --seed 0 --seeds 32 --turns 500`
-to play both seats on each of 32 generated maps. Use `--opponent random` for
-the seeded random baseline. The report includes the winner, victory type and
-final state hash for each game, along with aggregate win rate and planning time.
+to play both seats on each of 32 generated maps. Other opponents are `random`
+(seeded) and `v1` (the Phase 1 three-layer controller). The report gives each
+game's winner, victory type, final hash and conflicts. Win rates use all games.
+The relative Elo estimate credits draws with half a point and adds half a win
+and half a loss. The one-sided exact sign test compares the candidate's two
+games on each map to one win's worth of points and omits tied maps. Planning
+p95 measures both seats together. An error or panic fails the tournament and
+suppresses Elo and significance.
 
 Start a playable agent session with `histeries mcp --players 2 --seed 7`. To host an edited save, use `histeries mcp --state state.hst`. The [MCP guide](docs/mcp.md) covers transports, credentials, resources, tools and replay. Use `new --setup empty` for a blank scenario or pass `--map-ruleset PATH` to select a generation profile.

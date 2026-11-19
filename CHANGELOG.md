@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Deepened strategic evaluation, city project planning and joint tactical orders. Added paired tournaments against the frozen Phase 1 AI, two replayable external-agent MCP games and a fixture-driven parity scorecard.
+
 - Added ruleset-driven continents, same-owner military/civilian stacking, FIFO city production and adjacency income, playable city capture and neutral raiders, scenario command batches, and an authenticated MCP server with stdio and HTTP transports.
 
 - Bootstrapped the Phase 0 workspace and documentation scaffold.

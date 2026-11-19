@@ -2,6 +2,32 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 2 measurements · 2026-11-19
+
+The current controller played both seats on each of 32 reserved maps (seeds 40000–40031). The sign test treats a map as one paired observation and excludes tied maps. Elo is the smoothed rating difference within each matchup. The eight-worker repeat reproduced each of the 192 single-worker game rows, including its winner, length, conflict count and final hash. All 384 games finished without a crash, error or draw. [Individual games and commands](sessions/2026-11-19-phase2-tournament.txt)
+
+| Opponent | Wins / games | Win rate | Relative Elo | One-sided paired p |
+| --- | ---: | ---: | ---: | ---: |
+| Frozen Phase 1 controller | 44 / 64 | 68.75% | +135 | 0.00209 |
+| Greedy | 60 / 64 | 93.75% | +451 | 3.73 × 10⁻⁹ |
+| Random | 64 / 64 | 100% | +844 | 2.33 × 10⁻¹⁰ |
+
+After a review correction to move-and-fire range, the three control matchups reproduced their original results. On another 32 previously unused maps (50000–50031), the candidate won 45/64 against v1 (70.3125%, +147 Elo, one-sided paired p = 0.00048828125) and 60/64 against greedy. The corrected executable completed 512 tournament games with zero errors, crashes or draws. Its contested-seat planning p95 was 31.2 µs versus 19.4 µs for v1. Two full external-agent MCP games reproduce 219 protocol exchanges on fresh native stdio servers, through science victories in rounds 60 and 57. [New game's wire transcript](sessions/2026-11-19-phase2-mcp-game.jsonl.gz)
+
+| Reference suite | Checkpoints compared as individual assertions | Result |
+| --- | ---: | --- |
+| City growth and housing | 11 | 11 passed |
+| Military escort and builder road | 10 | 10 passed |
+| Seat visibility and round completion | 7 | 7 passed |
+| City capture and victory | 6 | 6 passed |
+| Maintainer observations | 0 | No samples supplied |
+
+The four designed fixtures use hand-derived game-rule expectations. Each PR runs them with `cargo xtask parity` and publishes the expected and measured values in its fast-gate artifacts. [Fixture definitions and method](../fixtures/README.md)
+
+On the Phase 2 PR, the hosted Linux, macOS and Windows jobs passed and compared all 1,200 fast round hashes. All five nightly shards and twelve weekly jobs passed, including the checkpointed 1,000-round fixtures. [Cross-platform fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/44490666796) · [Nightly](https://github.com/scaredpenguin627/histeries/actions/runs/44490667328) · [Weekly](https://github.com/scaredpenguin627/histeries/actions/runs/44490673620)
+
+The ordinary Phase 2 soak finished 1,000 games in 97.794 s (984 science, 16 domination, zero errors or crashes). All 40,414 round hashes matched across one and eight planning workers, save/load and replay; 8,710 hashes matched after checkpoint restoration. All 84,053 observed contacts received explicit orders. The highest per-game planning p95 on the unrestricted soak was 365.209 ms. On the six fast fixtures the highest p95 was 1.556 ms against the 250 ms limit. [Raw gate reports](sessions/2026-11-19-phase2-gates.zip)
+
 ## Phase 1 completion measurements · 2026-11-19
 
 All 1,000 ordinary games reached a victory with zero panics or errors on Windows x86-64 GNU with Rust 1.100.0. The 2–8-seat sample produced 918 science and 82 domination victories. The three-layer AI won 58 of 64 games against greedy on the fresh 30000–30031 seed cohort (90.625%, acceptance threshold 75%). It won all 64 games against random on those seeds. The 20000–20031 replication cohort produced 59 and 64 wins respectively. Seats swapped on every map. The full three-cohort tournament covered 384 games with zero draws, errors or crashes. [Per-game tournament evidence](sessions/phase1-completion-tournament.txt)

@@ -6,7 +6,9 @@ use std::{
     time::Instant,
 };
 
-use histeries_ai::{GreedyPlayer, Player, RandomPlayer, ThreeLayerPlayer, plan_seats};
+use histeries_ai::{
+    GreedyPlayer, Player, RandomPlayer, ThreeLayerPlayer, ThreeLayerV1Player, plan_seats,
+};
 use histeries_hex::{FlatHex, TileId, TileTopology};
 use histeries_rules_core::{CityId, PlayerId, UnitId};
 use histeries_sim::{
@@ -21,6 +23,7 @@ const SEATS: [PlayerId; 2] = [PlayerId::new(1), PlayerId::new(2)];
 enum Opponent {
     Greedy,
     Random,
+    V1,
 }
 
 impl Opponent {
@@ -28,6 +31,7 @@ impl Opponent {
         match self {
             Self::Greedy => Box::new(GreedyPlayer),
             Self::Random => Box::new(RandomPlayer::new(seed)),
+            Self::V1 => Box::new(ThreeLayerV1Player::default()),
         }
     }
 }
@@ -88,8 +92,8 @@ pub(super) fn opening(
 }
 
 // Plans share a start-of-round snapshot. A later seat can lose a target or
-// contested tile to the earlier seat. After a lost move, a settler is no
-// longer at its intended position for any later move or founding order.
+// contested tile to the earlier seat. Later orders may require the position
+// a unit would have reached had its move succeeded.
 pub(super) fn dispatch_plan(
     session: &mut Session,
     before: &SimulationState,
@@ -100,7 +104,11 @@ pub(super) fn dispatch_plan(
     let mut lost_moves = BTreeSet::new();
     for (i, command) in commands.iter().enumerate() {
         let depends_on_lost_move = matches!(command,
-            Command::UnitMove { unit, .. } | Command::CitySettle { unit, .. } | Command::CityFound { unit, .. }
+            Command::UnitMove { unit, .. }
+            | Command::UnitAttack { attacker: unit, .. }
+            | Command::UnitCaptureCity { unit, .. }
+            | Command::CitySettle { unit, .. }
+            | Command::CityFound { unit, .. }
             if lost_moves.contains(unit));
         // Validate skipped dependency chains on their original snapshot too;
         // an illegal plan must still fail even after losing its first move.
@@ -123,6 +131,7 @@ pub(super) fn dispatch_plan(
                         | Command::UnitPromote { .. }
                         | Command::UnitHold { .. }
                         | Command::CitySetProduction { .. }
+                        | Command::CityEnqueueProduction { .. }
                         | Command::CitySettle { .. }
                         | Command::CityFound { .. }
                 );
@@ -169,10 +178,20 @@ fn play(
     workers: usize,
     times: &mut RoundTimes,
 ) -> Result<Game, String> {
-    let mut session = scenario(seed)?;
     let mut players: [Box<dyn Player + Send>; 2] =
         [Box::new(ThreeLayerPlayer::default()), opponent.player(seed)];
     players.swap(0, candidate);
+    play_seats(seed, players, limit, workers, times)
+}
+
+fn play_seats(
+    seed: u64,
+    mut players: [Box<dyn Player + Send>; 2],
+    limit: u32,
+    workers: usize,
+    times: &mut RoundTimes,
+) -> Result<Game, String> {
+    let mut session = scenario(seed)?;
     let [first, second] = &mut players;
     let mut conflicts = 0;
     let mut turns = 0;
@@ -265,6 +284,13 @@ fn paired_p_value(better: u64, worse: u64) -> f64 {
     tail / total
 }
 
+/// A draw scores half a point. One extra half-win and half-loss keep the
+/// rating finite when either side wins every game.
+fn smoothed_elo(wins: u64, losses: u64, draws: u64) -> f64 {
+    let odds = (2 * wins + draws + 1) as f64 / (2 * losses + draws + 1) as f64;
+    400. * odds.log10()
+}
+
 pub(super) fn run(args: &[String]) -> Result<(), String> {
     validate_flags(
         args,
@@ -275,7 +301,8 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
     let opponent = match name.as_str() {
         "greedy" => Opponent::Greedy,
         "random" => Opponent::Random,
-        _ => return Err("--opponent must be greedy or random".into()),
+        "v1" => Opponent::V1,
+        _ => return Err("--opponent must be greedy, random or v1".into()),
     };
     let first = flag_u64(args, "--seed")?.unwrap_or(0);
     let count = flag_u32(args, "--seeds")?.unwrap_or(32);
@@ -352,11 +379,9 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
     if errors + crashes != 0 {
         return Err("tournament game failures; rating and significance unavailable".into());
     }
-    // Half a win and half a loss keep the estimate finite at either extreme.
-    let odds = (2 * candidate_wins + draws + 1) as f64 / (2 * opponent_wins + draws + 1) as f64;
     println!(
         "elo_delta_smoothed={:.0} paired_better={better} paired_worse={worse} paired_tied={} paired_sign_p_one_sided{}",
-        400. * odds.log10(),
+        smoothed_elo(candidate_wins, opponent_wins, draws),
         u64::from(count) - better - worse,
         format_p(paired_p_value(better, worse))
     );
@@ -374,6 +399,16 @@ fn format_p(p: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relative_elo_credits_half_a_point_for_each_draw() {
+        assert_eq!(smoothed_elo(0, 0, 64), 0.);
+        assert_eq!(smoothed_elo(3, 3, 7), 0.);
+        assert_eq!(smoothed_elo(64, 0, 0).round(), 844.);
+        // Two wins, two draws and the smoothing give odds 3.5 : 1.5.
+        assert_eq!(smoothed_elo(2, 0, 2).round(), 147.);
+        assert_eq!(smoothed_elo(0, 2, 2).round(), -147.);
+    }
 
     #[test]
     fn exact_sign_tail_uses_independent_seeds() {
@@ -445,6 +480,47 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn losing_a_move_cancels_the_followup_attack_even_if_target_is_in_range() {
+        let [first, second] = SEATS;
+        let topology = FlatHex::new(4, 1, false, false).unwrap();
+        let mut game = Session::with_map(SEATS, histeries_sim::MapState::blank(topology));
+        let archer = UnitId::new(2);
+        let target = UnitId::new(3);
+        for (player, unit, kind, pos) in [
+            (first, UnitId::new(1), UnitKind::Warrior, 0),
+            (second, archer, UnitKind::Archer, 2),
+            (first, target, UnitKind::Warrior, 3),
+        ] {
+            game.dispatch(Command::UnitSpawn {
+                player,
+                unit,
+                kind,
+                tile: TileId::new(pos),
+            })
+            .unwrap();
+        }
+        let original = game.state_snapshot();
+        let move_to_contested_tile = |player, unit| Command::UnitMove {
+            player,
+            unit,
+            destination: TileId::new(1),
+        };
+        game.dispatch(move_to_contested_tile(first, UnitId::new(1)))
+            .unwrap();
+        let before_plan = game.state_hash();
+        let plan = [
+            move_to_contested_tile(second, archer),
+            Command::UnitAttack {
+                player: second,
+                attacker: archer,
+                defender: target,
+            },
+        ];
+        assert_eq!(dispatch_plan(&mut game, &original, second, &plan), Ok(2));
+        assert_eq!(game.state_hash(), before_plan);
     }
 
     #[test]
@@ -539,6 +615,21 @@ mod tests {
                 play(7, seat, Opponent::Random, 2, 8, &mut RoundTimes::default()).unwrap()
             );
         }
+    }
+
+    #[test]
+    fn v1_reproduces_a_phase_one_tournament_game() {
+        // Recorded before the new controller, in phase1-completion-tournament.txt.
+        let game = play_seats(
+            30000,
+            [Opponent::V1.player(30000), Opponent::Greedy.player(30000)],
+            500,
+            1,
+            &mut RoundTimes::default(),
+        )
+        .unwrap();
+        assert_eq!(game.victory, Some((SEATS[0], VictoryKind::Science)));
+        assert_eq!((game.turns, game.hash), (51, 115_644_801_523_660_647));
     }
 
     #[test]

@@ -99,10 +99,11 @@ fn city_development_completes_prerequisites_then_building() {
     );
     let mut district_queued = false;
     let mut building_queued = false;
+    let mut chained_project = false;
     for turn in 0..160 {
         let obs = session.observe(player).unwrap();
         if obs.cities()[0].buildings.contains(&BuildingKind::Library) {
-            assert!(district_queued && building_queued);
+            assert!(district_queued && building_queued && chained_project);
             return;
         }
         let mut operations = Vec::new();
@@ -112,21 +113,23 @@ fn city_development_completes_prerequisites_then_building() {
             assert!(operations.contains(&Operation::ResearchCivic("civic_01".into())));
         }
         for command in commands {
-            if let Command::CitySetProduction { city, item, .. } = command
+            if let Command::CitySetProduction { city, item, .. }
+            | Command::CityEnqueueProduction { city, item, .. } = command
                 && city == CityId::new(0)
             {
+                if matches!(command, Command::CityEnqueueProduction { .. })
+                    && matches!(item, ProductionItem::Building(_))
+                {
+                    chained_project = true;
+                }
                 match item {
                     ProductionItem::District {
                         kind: DistrictKind::Campus,
                         ..
                     } => district_queued = true,
                     ProductionItem::Building(BuildingKind::Library) => {
-                        assert!(
-                            obs.cities()[0]
-                                .districts
-                                .iter()
-                                .any(|district| district.kind == DistrictKind::Campus)
-                        );
+                        assert!(district_queued);
+
                         building_queued = true;
                     }
                     _ => {}

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "provenance": "designed",
+  "source": "AGENTS.md section 6.2 and ADR-0014: with no cities or units each seat has an empty board projection. Separate editor markers are private. Ending one seat does not complete a two-seat round.",
+  "players": 2,
+  "width": 5,
+  "height": 1,
+  "steps": [
+    {
+      "commands": [
+        { "command": "editor.set_marker", "player": 1, "value": 13 },
+        { "command": "editor.set_marker", "player": 2, "value": 29 },
+        { "command": "turn.end", "player": 1 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/own_marker", "expected": 13 },
+        { "seat": 2, "pointer": "/own_marker", "expected": 29 },
+        { "seat": 1, "pointer": "/visible_tiles", "expected": [] },
+        { "seat": 2, "pointer": "/visible_units", "expected": [] },
+        { "seat": 2, "pointer": "/turn", "expected": 0 }
+      ]
+    },
+    {
+      "commands": [
+        { "command": "turn.end", "player": 2 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/turn", "expected": 1 },
+        { "seat": 2, "pointer": "/own_marker", "expected": 29 }
+      ]
+    }
+  ]
+}

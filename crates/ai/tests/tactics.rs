@@ -222,3 +222,165 @@ fn tactical_search_targets_military_in_either_slot_order() {
         assert_eq!(target.hp, UnitKind::Settler.max_hp());
     }
 }
+
+#[test]
+fn archer_uses_a_scouts_sight_to_step_into_range_and_fire() {
+    use histeries_ai::{Player, ThreeLayerV1Player};
+    let seat = PlayerId::new(1);
+    let mut session = battlefield();
+    spawn(&mut session, 1, 1, 0, UnitKind::Archer);
+    spawn(&mut session, 1, 2, 2, UnitKind::Builder);
+    spawn(&mut session, 2, 3, 3, UnitKind::Warrior);
+    let obs = session.observe(seat).unwrap();
+    let attack = Command::UnitAttack {
+        player: seat,
+        attacker: UnitId::new(1),
+        defender: UnitId::new(3),
+    };
+    assert!(
+        !ThreeLayerV1Player::default()
+            .plan(&obs)
+            .commands
+            .contains(&attack)
+    );
+    let commands = tactical::plan(&obs, &mut Vec::new());
+    assert_eq!(
+        commands,
+        [
+            Command::UnitMove {
+                player: seat,
+                unit: UnitId::new(1),
+                destination: TileId::new(1)
+            },
+            attack
+        ]
+    );
+    for order in commands {
+        session.dispatch(order).unwrap();
+    }
+    assert!(session.observe(PlayerId::new(2)).unwrap().units()[0].hp < UnitKind::Warrior.max_hp());
+}
+
+#[test]
+fn exposed_city_outweighs_incumbent_science_and_a_guard_removes_the_opportunity() {
+    use histeries_ai::{ThreeLayerPlayer, VictoryObjective, strategic};
+    let player = PlayerId::new(1);
+    let mut session = battlefield();
+    for (seat, id, tile) in [(1, 0, 0), (2, 3, 3)] {
+        spawn(&mut session, seat, id, tile, UnitKind::Settler);
+        session
+            .dispatch(Command::CitySettle {
+                player: PlayerId::new(seat),
+                unit: UnitId::new(id),
+            })
+            .unwrap();
+    }
+    spawn(&mut session, 1, 2, 2, UnitKind::Warrior);
+    let incumbent = VictoryObjective::Science;
+    let seen = session.observe(player).unwrap();
+    assert_eq!(
+        ThreeLayerPlayer::resume(player, incumbent)
+            .plan_v1(&seen)
+            .objective,
+        incumbent
+    );
+    assert_eq!(
+        strategic::choose_objective(&seen, Some(incumbent)),
+        VictoryObjective::Domination
+    );
+    spawn(&mut session, 2, 4, 4, UnitKind::Archer);
+    assert_eq!(
+        strategic::choose_objective(&session.observe(player).unwrap(), Some(incumbent)),
+        incumbent
+    );
+}
+
+#[test]
+fn ranged_support_can_clear_a_perimeter_for_lower_id_melee_in_one_plan() {
+    use histeries_ai::{ThreeLayerPlayer, VictoryObjective};
+    let player = PlayerId::new(1);
+    let rival = PlayerId::new(2);
+    let mut session = Session::with_map(
+        [player, rival],
+        MapState::blank(FlatHex::new(7, 1, false, false).unwrap()),
+    );
+    for (seat, id, tile) in [(1, 10, 0), (2, 20, 3)] {
+        spawn(&mut session, seat, id, tile, UnitKind::Settler);
+        session
+            .dispatch(Command::CitySettle {
+                player: PlayerId::new(seat),
+                unit: UnitId::new(id),
+            })
+            .unwrap();
+    }
+    spawn(&mut session, 1, 1, 2, UnitKind::Warrior);
+    spawn(&mut session, 1, 2, 6, UnitKind::Archer);
+    spawn(&mut session, 2, 3, 4, UnitKind::Archer);
+    for _ in 0..7 {
+        attack(&mut session, 1, 2, 3);
+        next_turn(&mut session);
+    }
+    let observation = session.observe(player).unwrap();
+    let v1 = ThreeLayerPlayer::resume(player, VictoryObjective::Domination).plan_v1(&observation);
+    assert!(
+        !v1.commands
+            .iter()
+            .any(|c| matches!(c, Command::UnitCaptureCity { .. }))
+    );
+    let commands = tactical::plan(&observation, &mut Vec::new());
+    assert!(
+        matches!(&commands[..], [Command::UnitAttack { attacker, .. }, Command::UnitCaptureCity { unit, .. }]
+        if *attacker == UnitId::new(2) && *unit == UnitId::new(1))
+    );
+    for order in commands {
+        session.dispatch(order).unwrap();
+    }
+    assert_eq!(
+        session.winner(),
+        Some((player, histeries_sim::VictoryKind::Domination))
+    );
+}
+
+#[test]
+fn archers_move_to_both_shores_and_fire_across_water() {
+    let seat = PlayerId::new(1);
+    let rival = PlayerId::new(2);
+    let mut session = Session::with_map(
+        [seat, rival],
+        MapState::blank(FlatHex::new(7, 1, false, false).unwrap()),
+    );
+    for tile in [2, 4] {
+        session
+            .dispatch(Command::EditorSetTerrain {
+                player: seat,
+                tile: TileId::new(tile),
+                terrain: histeries_sim::Terrain::Ocean,
+            })
+            .unwrap();
+    }
+    spawn(&mut session, 1, 1, 0, UnitKind::Archer);
+    spawn(&mut session, 1, 2, 6, UnitKind::Archer);
+    spawn(&mut session, 1, 3, 1, UnitKind::Builder);
+    spawn(&mut session, 1, 4, 5, UnitKind::Builder);
+    spawn(&mut session, 2, 5, 3, UnitKind::Warrior);
+    let observation = session.observe(seat).unwrap();
+    let commands = tactical::plan(&observation, &mut Vec::new());
+    let mut expected = Vec::new();
+    for (id, tile) in [(1, 1), (2, 5)] {
+        expected.push(Command::UnitMove {
+            player: seat,
+            unit: UnitId::new(id),
+            destination: TileId::new(tile),
+        });
+        expected.push(Command::UnitAttack {
+            player: seat,
+            attacker: UnitId::new(id),
+            defender: UnitId::new(5),
+        });
+    }
+    assert_eq!(commands, expected);
+    for command in commands {
+        session.dispatch(command).unwrap();
+    }
+    assert_eq!(session.observe(rival).unwrap().units()[0].hp, 90);
+}

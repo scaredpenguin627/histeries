@@ -63,6 +63,16 @@ fn check_stdio(command: &mut Command, seat: u32, turn: u32) {
 }
 
 fn with_stdio(command: &mut Command, play: impl FnOnce(&mut dyn FnMut(&str, Value) -> Value)) {
+    with_stdio_requests(command, |exchange| {
+        play(&mut |method, params| {
+            let reply = exchange(&rpc(method, params));
+            assert!(reply.get("error").is_none(), "{reply}");
+            reply["result"].clone()
+        });
+    });
+}
+
+fn with_stdio_requests(command: &mut Command, play: impl FnOnce(&mut dyn FnMut(&Value) -> Value)) {
     let mut child = Server(
         command
             .stdin(Stdio::piped())
@@ -72,17 +82,20 @@ fn with_stdio(command: &mut Command, play: impl FnOnce(&mut dyn FnMut(&str, Valu
     );
     let mut input = child.0.stdin.take().unwrap();
     let mut output = BufReader::new(child.0.stdout.take().unwrap());
-    let mut call = |method: &str, params| {
-        writeln!(input, "{}", rpc(method, params)).unwrap();
+    play(&mut |request| {
+        writeln!(input, "{request}").unwrap();
         input.flush().unwrap();
         let mut line = String::new();
         output.read_line(&mut line).unwrap();
         let reply: Value = serde_json::from_str(&line).unwrap();
-        assert!(reply.get("error").is_none(), "{reply}");
-        reply["result"].clone()
-    };
-    play(&mut call);
+        assert_eq!(reply["jsonrpc"], "2.0");
+        assert_eq!(reply["id"], request["id"]);
+        reply
+    });
 }
+
+#[path = "mcp/recorded_agent.rs"]
+mod recorded_agent;
 
 #[test]
 fn stdio_resumes_nonconsecutive_saved_seats_halfway_through_round() {
