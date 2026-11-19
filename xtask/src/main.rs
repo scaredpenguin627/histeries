@@ -4,6 +4,8 @@
 
 mod parity;
 mod soak;
+mod web;
+mod web_preview;
 
 use std::{
     env, fs,
@@ -186,6 +188,20 @@ fn ohos_check(root: &Path) -> bool {
 fn main() -> ExitCode {
     let root = workspace_root();
     match env::args().nth(1).as_deref() {
+        Some(command @ ("web-build" | "web-serve")) => {
+            let result = if command == "web-build" {
+                web::build(&root)
+            } else {
+                web::serve(&root, &env::args().skip(2).collect::<Vec<_>>())
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Some("layers") => match check_layers(&root) {
             Ok(()) => {
                 println!("dependency layers are valid");
@@ -264,7 +280,7 @@ fn main() -> ExitCode {
         }
         None => {
             eprintln!(
-                "usage: cargo xtask <layers|ci-fast|parity|fixture fast|nightly|weekly|soak|memgate|ohos-check>"
+                "usage: cargo xtask <layers|ci-fast|parity|fixture fast|nightly|weekly|soak|memgate|ohos-check|web-build|web-serve>"
             );
             ExitCode::FAILURE
         }
