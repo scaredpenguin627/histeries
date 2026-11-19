@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provenance": "designed",
+  "source": "ADR-0007: base housing 2, initial population 1, two food per citizen per round, growth threshold 10 times population. Four rounds store 8; the fifth spends 10. A further five cannot raise population above 2.",
+  "players": 2,
+  "width": 8,
+  "height": 1,
+  "steps": [
+    {
+      "commands": [
+        { "command": "unit.spawn", "player": 1, "unit": 11, "kind": "settler", "tile": 0 },
+        { "command": "city.found", "player": 1, "unit": 11, "city": 11 },
+        { "command": "unit.spawn", "player": 2, "unit": 22, "kind": "settler", "tile": 7 },
+        { "command": "city.found", "player": 2, "unit": 22, "city": 22 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/cities/0/population", "expected": 1 },
+        { "seat": 1, "pointer": "/cities/0/housing", "expected": 2 },
+        { "seat": 1, "pointer": "/cities/0/food_stored", "expected": 0 },
+        { "seat": 1, "pointer": "/progress/policy_slots", "expected": 2 }
+      ]
+    },
+    {
+      "rounds": 4,
+      "checks": [
+        { "seat": 1, "pointer": "/turn", "expected": 4 },
+        { "seat": 1, "pointer": "/cities/0/food_stored", "expected": 8 },
+        { "seat": 1, "pointer": "/cities/0/population", "expected": 1 }
+      ]
+    },
+    {
+      "rounds": 1,
+      "checks": [
+        { "seat": 1, "pointer": "/cities/0/food_stored", "expected": 0 },
+        { "seat": 1, "pointer": "/cities/0/population", "expected": 2 }
+      ]
+    },
+    {
+      "rounds": 5,
+      "checks": [
+        { "seat": 1, "pointer": "/cities/0/population", "expected": 2 },
+        { "seat": 2, "pointer": "/cities/0/population", "expected": 2 }
+      ]
+    }
+  ]
+}

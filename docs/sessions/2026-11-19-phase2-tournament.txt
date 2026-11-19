@@ -1,0 +1,412 @@
+Phase 2 paired tournament, 2026-11-19
+
+The first release run used 32 new map seeds (40000 through 40031), chosen
+before inspecting the results. This final release reruns the same controls
+after review corrected ranged attacks across water following a move.
+Each generated 8 by 8 map is played twice against greedy, seeded random
+and the Phase 1 three-layer player (v1), swapping the candidate seats.
+Starting forces and difficulty are equal. Games stop at victory or 500 rounds.
+
+Build: cargo build --release --locked -p histeries-cli --bin histeries
+Executable SHA-256: 4A5DE679B81F014261B572D1DAC96226E6505266A1F723929FD2EC3AB7358FF3
+Rust 1.100.0, x86_64-pc-windows-gnu. Intel Core i5-8250U.
+Command: histeries tournament --opponent NAME --seed 40000 --seeds 32 --turns 500 --workers N
+
+The per-game rows are from one planning worker. The repeat requests eight
+workers (up to two seats can plan concurrently). Every repeat game row was
+compared with its one-worker row. Planning p95 is the upper histogram bound
+in microseconds for both seats together. Timings are local wall time. Win rates
+are in basis points using all games. Elo credits a draw with half a point and
+adds half a win and half a loss. The one-sided exact binomial sign test treats
+each non-tied seed pair as one observation.
+
+candidate=three-layer opponent=greedy seeds=40000..=40031 turn_limit=500 workers=1
+seed=40000 candidate_seat=1 turns=49 rounds_planned=49 hash=16699449083686829283 conflicts=17 winner=1 victory=Science
+seed=40000 candidate_seat=2 turns=47 rounds_planned=47 hash=4459914601531443630 conflicts=0 winner=2 victory=Science
+seed=40001 candidate_seat=1 turns=48 rounds_planned=48 hash=12441458631077072750 conflicts=23 winner=1 victory=Science
+seed=40001 candidate_seat=2 turns=48 rounds_planned=48 hash=5125547741002511447 conflicts=0 winner=2 victory=Science
+seed=40002 candidate_seat=1 turns=50 rounds_planned=50 hash=14556011713042918018 conflicts=31 winner=1 victory=Science
+seed=40002 candidate_seat=2 turns=47 rounds_planned=47 hash=12872145957779381905 conflicts=0 winner=2 victory=Science
+seed=40003 candidate_seat=1 turns=50 rounds_planned=50 hash=10103809571098648067 conflicts=0 winner=1 victory=Science
+seed=40003 candidate_seat=2 turns=47 rounds_planned=47 hash=18265665876727914842 conflicts=1 winner=2 victory=Science
+seed=40004 candidate_seat=1 turns=49 rounds_planned=49 hash=15754212425663306624 conflicts=19 winner=1 victory=Science
+seed=40004 candidate_seat=2 turns=48 rounds_planned=48 hash=4707676400809430009 conflicts=0 winner=2 victory=Science
+seed=40005 candidate_seat=1 turns=49 rounds_planned=49 hash=5133195427394966736 conflicts=1 winner=1 victory=Science
+seed=40005 candidate_seat=2 turns=47 rounds_planned=47 hash=2093003465470848102 conflicts=0 winner=2 victory=Science
+seed=40006 candidate_seat=1 turns=49 rounds_planned=49 hash=6056351740067894076 conflicts=30 winner=1 victory=Science
+seed=40006 candidate_seat=2 turns=47 rounds_planned=47 hash=3371200863770066426 conflicts=0 winner=2 victory=Science
+seed=40007 candidate_seat=1 turns=49 rounds_planned=49 hash=10342276627829473326 conflicts=17 winner=1 victory=Science
+seed=40007 candidate_seat=2 turns=48 rounds_planned=48 hash=3212899782475710292 conflicts=0 winner=2 victory=Science
+seed=40008 candidate_seat=1 turns=50 rounds_planned=50 hash=11449823792113324417 conflicts=31 winner=1 victory=Science
+seed=40008 candidate_seat=2 turns=48 rounds_planned=48 hash=8192305702288813706 conflicts=2 winner=2 victory=Science
+seed=40009 candidate_seat=1 turns=48 rounds_planned=48 hash=4652652297958754875 conflicts=2 winner=1 victory=Science
+seed=40009 candidate_seat=2 turns=47 rounds_planned=47 hash=13331137062731585045 conflicts=0 winner=2 victory=Science
+seed=40010 candidate_seat=1 turns=49 rounds_planned=49 hash=6420326016740523643 conflicts=27 winner=1 victory=Science
+seed=40010 candidate_seat=2 turns=48 rounds_planned=48 hash=15646859856529878895 conflicts=2 winner=2 victory=Science
+seed=40011 candidate_seat=1 turns=49 rounds_planned=49 hash=5462107092674601490 conflicts=26 winner=1 victory=Science
+seed=40011 candidate_seat=2 turns=47 rounds_planned=47 hash=10635723316665763860 conflicts=3 winner=2 victory=Science
+seed=40012 candidate_seat=1 turns=48 rounds_planned=48 hash=12586888110122200734 conflicts=23 winner=1 victory=Science
+seed=40012 candidate_seat=2 turns=49 rounds_planned=49 hash=13813534174996940738 conflicts=0 winner=2 victory=Science
+seed=40013 candidate_seat=1 turns=49 rounds_planned=49 hash=15737996930929024607 conflicts=16 winner=1 victory=Science
+seed=40013 candidate_seat=2 turns=48 rounds_planned=48 hash=12598613812760519228 conflicts=0 winner=2 victory=Science
+seed=40014 candidate_seat=1 turns=48 rounds_planned=48 hash=16643822115040374955 conflicts=29 winner=1 victory=Science
+seed=40014 candidate_seat=2 turns=48 rounds_planned=48 hash=5268724602544429086 conflicts=0 winner=2 victory=Science
+seed=40015 candidate_seat=1 turns=48 rounds_planned=48 hash=14622764984956872161 conflicts=25 winner=1 victory=Science
+seed=40015 candidate_seat=2 turns=47 rounds_planned=47 hash=17098171098676942340 conflicts=0 winner=2 victory=Science
+seed=40016 candidate_seat=1 turns=48 rounds_planned=48 hash=7516528480859464595 conflicts=29 winner=1 victory=Science
+seed=40016 candidate_seat=2 turns=48 rounds_planned=48 hash=14587749804483982015 conflicts=0 winner=2 victory=Science
+seed=40017 candidate_seat=1 turns=48 rounds_planned=48 hash=13546677839444234280 conflicts=19 winner=1 victory=Science
+seed=40017 candidate_seat=2 turns=48 rounds_planned=48 hash=18181111027256608166 conflicts=0 winner=2 victory=Science
+seed=40018 candidate_seat=1 turns=48 rounds_planned=48 hash=4821527399823482998 conflicts=0 winner=1 victory=Science
+seed=40018 candidate_seat=2 turns=55 rounds_planned=55 hash=230746699963977587 conflicts=0 winner=1 victory=Science
+seed=40019 candidate_seat=1 turns=49 rounds_planned=49 hash=4077590420257191052 conflicts=0 winner=1 victory=Science
+seed=40019 candidate_seat=2 turns=57 rounds_planned=57 hash=8219956869838456118 conflicts=0 winner=1 victory=Science
+seed=40020 candidate_seat=1 turns=50 rounds_planned=50 hash=12376196871063465687 conflicts=0 winner=1 victory=Science
+seed=40020 candidate_seat=2 turns=57 rounds_planned=57 hash=11952462328773605117 conflicts=0 winner=1 victory=Science
+seed=40021 candidate_seat=1 turns=49 rounds_planned=49 hash=16396161234231002386 conflicts=31 winner=1 victory=Science
+seed=40021 candidate_seat=2 turns=48 rounds_planned=48 hash=12062243925027795144 conflicts=0 winner=2 victory=Science
+seed=40022 candidate_seat=1 turns=49 rounds_planned=49 hash=3324125369122417516 conflicts=33 winner=1 victory=Science
+seed=40022 candidate_seat=2 turns=47 rounds_planned=47 hash=1291352853037470204 conflicts=0 winner=2 victory=Science
+seed=40023 candidate_seat=1 turns=49 rounds_planned=49 hash=39332785632447719 conflicts=24 winner=1 victory=Science
+seed=40023 candidate_seat=2 turns=48 rounds_planned=48 hash=18375876834561810284 conflicts=0 winner=2 victory=Science
+seed=40024 candidate_seat=1 turns=48 rounds_planned=48 hash=8812316914181360964 conflicts=19 winner=1 victory=Science
+seed=40024 candidate_seat=2 turns=48 rounds_planned=48 hash=12962862042901866728 conflicts=0 winner=2 victory=Science
+seed=40025 candidate_seat=1 turns=48 rounds_planned=48 hash=12136600970613279735 conflicts=16 winner=1 victory=Science
+seed=40025 candidate_seat=2 turns=48 rounds_planned=48 hash=15997127007128505027 conflicts=2 winner=2 victory=Science
+seed=40026 candidate_seat=1 turns=48 rounds_planned=48 hash=6192822252855671970 conflicts=0 winner=1 victory=Science
+seed=40026 candidate_seat=2 turns=48 rounds_planned=48 hash=533789236738716868 conflicts=0 winner=2 victory=Science
+seed=40027 candidate_seat=1 turns=50 rounds_planned=50 hash=11250818379909897859 conflicts=29 winner=1 victory=Science
+seed=40027 candidate_seat=2 turns=47 rounds_planned=47 hash=326474861571214428 conflicts=0 winner=2 victory=Science
+seed=40028 candidate_seat=1 turns=48 rounds_planned=48 hash=17010408625298277284 conflicts=19 winner=1 victory=Science
+seed=40028 candidate_seat=2 turns=48 rounds_planned=48 hash=4424925853887329395 conflicts=0 winner=2 victory=Science
+seed=40029 candidate_seat=1 turns=49 rounds_planned=49 hash=3003397100358602424 conflicts=19 winner=1 victory=Science
+seed=40029 candidate_seat=2 turns=48 rounds_planned=48 hash=6365774128123099320 conflicts=0 winner=2 victory=Science
+seed=40030 candidate_seat=1 turns=47 rounds_planned=47 hash=18048126140195973214 conflicts=0 winner=1 victory=Science
+seed=40030 candidate_seat=2 turns=55 rounds_planned=55 hash=6217223437381635368 conflicts=0 winner=1 victory=Science
+seed=40031 candidate_seat=1 turns=47 rounds_planned=47 hash=12680534366871956753 conflicts=14 winner=1 victory=Science
+seed=40031 candidate_seat=2 turns=48 rounds_planned=48 hash=13844957042020800473 conflicts=2 winner=2 victory=Science
+games=64 wins=60 losses=4 draws=0 errors=0 crashes=0 conflicts=581 win_bp=9375 planning_round_p95_upper_us=545
+player=three-layer science_wins=60 science_win_bp=9375 domination_wins=0 domination_win_bp=0
+player=greedy science_wins=4 science_win_bp=625 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=451 paired_better=28 paired_worse=0 paired_tied=4 paired_sign_p_one_sided=3.72529030e-9
+wall_ms=1677
+
+candidate=three-layer opponent=random seeds=40000..=40031 turn_limit=500 workers=1
+seed=40000 candidate_seat=1 turns=48 rounds_planned=48 hash=10102585994815662982 conflicts=1 winner=1 victory=Science
+seed=40000 candidate_seat=2 turns=47 rounds_planned=47 hash=5587879721730041760 conflicts=6 winner=2 victory=Science
+seed=40001 candidate_seat=1 turns=48 rounds_planned=48 hash=7173129862747741934 conflicts=0 winner=1 victory=Science
+seed=40001 candidate_seat=2 turns=48 rounds_planned=48 hash=14943475026912501155 conflicts=1 winner=2 victory=Science
+seed=40002 candidate_seat=1 turns=28 rounds_planned=29 hash=10646593161448310228 conflicts=0 winner=1 victory=Domination
+seed=40002 candidate_seat=2 turns=47 rounds_planned=47 hash=12821043111900050608 conflicts=0 winner=2 victory=Science
+seed=40003 candidate_seat=1 turns=48 rounds_planned=48 hash=15792852212227659969 conflicts=2 winner=1 victory=Science
+seed=40003 candidate_seat=2 turns=47 rounds_planned=47 hash=4762402836561983049 conflicts=3 winner=2 victory=Science
+seed=40004 candidate_seat=1 turns=49 rounds_planned=49 hash=2022322705327789004 conflicts=3 winner=1 victory=Science
+seed=40004 candidate_seat=2 turns=47 rounds_planned=48 hash=16468696854299476180 conflicts=4 winner=2 victory=Science
+seed=40005 candidate_seat=1 turns=48 rounds_planned=48 hash=17987082299759716162 conflicts=1 winner=1 victory=Science
+seed=40005 candidate_seat=2 turns=47 rounds_planned=47 hash=15559171838160073101 conflicts=0 winner=2 victory=Science
+seed=40006 candidate_seat=1 turns=48 rounds_planned=48 hash=727681453288930502 conflicts=1 winner=1 victory=Science
+seed=40006 candidate_seat=2 turns=47 rounds_planned=47 hash=7853164227078707772 conflicts=3 winner=2 victory=Science
+seed=40007 candidate_seat=1 turns=49 rounds_planned=49 hash=6083597428285372226 conflicts=1 winner=1 victory=Science
+seed=40007 candidate_seat=2 turns=12 rounds_planned=13 hash=7592633420918489884 conflicts=0 winner=2 victory=Domination
+seed=40008 candidate_seat=1 turns=33 rounds_planned=34 hash=8347731874083361027 conflicts=0 winner=1 victory=Domination
+seed=40008 candidate_seat=2 turns=51 rounds_planned=51 hash=10489552452393252415 conflicts=1 winner=2 victory=Science
+seed=40009 candidate_seat=1 turns=37 rounds_planned=38 hash=17616799110532372915 conflicts=0 winner=1 victory=Domination
+seed=40009 candidate_seat=2 turns=47 rounds_planned=47 hash=6293358871837859322 conflicts=0 winner=2 victory=Science
+seed=40010 candidate_seat=1 turns=49 rounds_planned=49 hash=3563167080488265213 conflicts=1 winner=1 victory=Science
+seed=40010 candidate_seat=2 turns=48 rounds_planned=48 hash=18004686897112537265 conflicts=1 winner=2 victory=Science
+seed=40011 candidate_seat=1 turns=28 rounds_planned=29 hash=3422847069366496342 conflicts=0 winner=1 victory=Domination
+seed=40011 candidate_seat=2 turns=48 rounds_planned=48 hash=16549684905056592996 conflicts=0 winner=2 victory=Science
+seed=40012 candidate_seat=1 turns=48 rounds_planned=48 hash=17492963305509270744 conflicts=1 winner=1 victory=Science
+seed=40012 candidate_seat=2 turns=12 rounds_planned=13 hash=15153604238814164559 conflicts=3 winner=2 victory=Domination
+seed=40013 candidate_seat=1 turns=49 rounds_planned=49 hash=7110916142994924472 conflicts=0 winner=1 victory=Science
+seed=40013 candidate_seat=2 turns=48 rounds_planned=48 hash=16184140673926093700 conflicts=0 winner=2 victory=Science
+seed=40014 candidate_seat=1 turns=48 rounds_planned=48 hash=9243131270822795322 conflicts=3 winner=1 victory=Science
+seed=40014 candidate_seat=2 turns=48 rounds_planned=48 hash=2761694299127946123 conflicts=5 winner=2 victory=Science
+seed=40015 candidate_seat=1 turns=48 rounds_planned=48 hash=13744776766357466782 conflicts=3 winner=1 victory=Science
+seed=40015 candidate_seat=2 turns=47 rounds_planned=47 hash=1287685518445984914 conflicts=1 winner=2 victory=Science
+seed=40016 candidate_seat=1 turns=48 rounds_planned=48 hash=12272140252027906675 conflicts=0 winner=1 victory=Science
+seed=40016 candidate_seat=2 turns=48 rounds_planned=48 hash=2155690991041010535 conflicts=1 winner=2 victory=Science
+seed=40017 candidate_seat=1 turns=48 rounds_planned=48 hash=829554177989494405 conflicts=2 winner=1 victory=Science
+seed=40017 candidate_seat=2 turns=48 rounds_planned=48 hash=1813548845831791737 conflicts=5 winner=2 victory=Science
+seed=40018 candidate_seat=1 turns=48 rounds_planned=48 hash=5219711633349517474 conflicts=0 winner=1 victory=Science
+seed=40018 candidate_seat=2 turns=153 rounds_planned=153 hash=2077369509372409763 conflicts=0 winner=2 victory=Science
+seed=40019 candidate_seat=1 turns=49 rounds_planned=49 hash=5312983665161904215 conflicts=0 winner=1 victory=Science
+seed=40019 candidate_seat=2 turns=153 rounds_planned=153 hash=17008155327808217141 conflicts=0 winner=2 victory=Science
+seed=40020 candidate_seat=1 turns=50 rounds_planned=50 hash=16015469452302762894 conflicts=0 winner=1 victory=Science
+seed=40020 candidate_seat=2 turns=153 rounds_planned=153 hash=5850112986427930632 conflicts=0 winner=2 victory=Science
+seed=40021 candidate_seat=1 turns=48 rounds_planned=48 hash=110756786265066009 conflicts=0 winner=1 victory=Science
+seed=40021 candidate_seat=2 turns=12 rounds_planned=13 hash=12016291306163187783 conflicts=0 winner=2 victory=Domination
+seed=40022 candidate_seat=1 turns=49 rounds_planned=49 hash=8729205211904379136 conflicts=1 winner=1 victory=Science
+seed=40022 candidate_seat=2 turns=47 rounds_planned=47 hash=1743166307456398575 conflicts=4 winner=2 victory=Science
+seed=40023 candidate_seat=1 turns=49 rounds_planned=49 hash=6796551230636593074 conflicts=2 winner=1 victory=Science
+seed=40023 candidate_seat=2 turns=12 rounds_planned=13 hash=2669556754711332256 conflicts=0 winner=2 victory=Domination
+seed=40024 candidate_seat=1 turns=43 rounds_planned=44 hash=13225775079574800486 conflicts=2 winner=1 victory=Domination
+seed=40024 candidate_seat=2 turns=48 rounds_planned=48 hash=77569925334669931 conflicts=10 winner=2 victory=Science
+seed=40025 candidate_seat=1 turns=48 rounds_planned=48 hash=8181005799650915334 conflicts=0 winner=1 victory=Science
+seed=40025 candidate_seat=2 turns=48 rounds_planned=48 hash=16464902652853311807 conflicts=1 winner=2 victory=Science
+seed=40026 candidate_seat=1 turns=49 rounds_planned=49 hash=10342073627324994286 conflicts=0 winner=1 victory=Science
+seed=40026 candidate_seat=2 turns=49 rounds_planned=49 hash=14814722071536397252 conflicts=5 winner=2 victory=Science
+seed=40027 candidate_seat=1 turns=50 rounds_planned=50 hash=3886771542088123014 conflicts=0 winner=1 victory=Science
+seed=40027 candidate_seat=2 turns=47 rounds_planned=47 hash=11431270267790120843 conflicts=1 winner=2 victory=Science
+seed=40028 candidate_seat=1 turns=48 rounds_planned=48 hash=4039156819862184085 conflicts=0 winner=1 victory=Science
+seed=40028 candidate_seat=2 turns=12 rounds_planned=13 hash=4806620977606301272 conflicts=0 winner=2 victory=Domination
+seed=40029 candidate_seat=1 turns=49 rounds_planned=49 hash=14431977132375593227 conflicts=0 winner=1 victory=Science
+seed=40029 candidate_seat=2 turns=48 rounds_planned=48 hash=14401357850523204943 conflicts=3 winner=2 victory=Science
+seed=40030 candidate_seat=1 turns=47 rounds_planned=47 hash=4778943007538533154 conflicts=0 winner=1 victory=Science
+seed=40030 candidate_seat=2 turns=153 rounds_planned=153 hash=11392118221496754256 conflicts=0 winner=2 victory=Science
+seed=40031 candidate_seat=1 turns=36 rounds_planned=37 hash=1976149731983111767 conflicts=0 winner=1 victory=Domination
+seed=40031 candidate_seat=2 turns=48 rounds_planned=48 hash=12366264492809450384 conflicts=3 winner=2 victory=Science
+games=64 wins=64 losses=0 draws=0 errors=0 crashes=0 conflicts=85 win_bp=10000 planning_round_p95_upper_us=454
+player=three-layer science_wins=53 science_win_bp=8281 domination_wins=11 domination_win_bp=1718
+player=random science_wins=0 science_win_bp=0 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=844 paired_better=32 paired_worse=0 paired_tied=0 paired_sign_p_one_sided=2.32830644e-10
+wall_ms=1294
+
+candidate=three-layer opponent=v1 seeds=40000..=40031 turn_limit=500 workers=1
+seed=40000 candidate_seat=1 turns=46 rounds_planned=46 hash=5844456817572183260 conflicts=14 winner=1 victory=Science
+seed=40000 candidate_seat=2 turns=47 rounds_planned=47 hash=13589946248191198808 conflicts=4 winner=2 victory=Science
+seed=40001 candidate_seat=1 turns=48 rounds_planned=48 hash=15249530668037451365 conflicts=25 winner=1 victory=Science
+seed=40001 candidate_seat=2 turns=48 rounds_planned=48 hash=16873699598400583655 conflicts=2 winner=1 victory=Science
+seed=40002 candidate_seat=1 turns=48 rounds_planned=48 hash=4686905951244077501 conflicts=20 winner=1 victory=Science
+seed=40002 candidate_seat=2 turns=47 rounds_planned=47 hash=10615159435292751511 conflicts=4 winner=2 victory=Science
+seed=40003 candidate_seat=1 turns=46 rounds_planned=46 hash=15363667623357035558 conflicts=0 winner=2 victory=Science
+seed=40003 candidate_seat=2 turns=46 rounds_planned=46 hash=1515681112219871949 conflicts=0 winner=2 victory=Science
+seed=40004 candidate_seat=1 turns=47 rounds_planned=47 hash=4239539508980714696 conflicts=23 winner=1 victory=Science
+seed=40004 candidate_seat=2 turns=48 rounds_planned=48 hash=13205028112045760504 conflicts=4 winner=2 victory=Science
+seed=40005 candidate_seat=1 turns=47 rounds_planned=47 hash=5816576053156097902 conflicts=1 winner=2 victory=Science
+seed=40005 candidate_seat=2 turns=47 rounds_planned=47 hash=3529793719626239953 conflicts=4 winner=2 victory=Science
+seed=40006 candidate_seat=1 turns=46 rounds_planned=46 hash=11576603308285122718 conflicts=10 winner=2 victory=Science
+seed=40006 candidate_seat=2 turns=46 rounds_planned=47 hash=5186486380599764762 conflicts=0 winner=2 victory=Science
+seed=40007 candidate_seat=1 turns=48 rounds_planned=48 hash=18026360248821276572 conflicts=21 winner=2 victory=Science
+seed=40007 candidate_seat=2 turns=48 rounds_planned=48 hash=6927138827098536571 conflicts=4 winner=2 victory=Science
+seed=40008 candidate_seat=1 turns=46 rounds_planned=46 hash=8931828215187501539 conflicts=12 winner=1 victory=Science
+seed=40008 candidate_seat=2 turns=47 rounds_planned=47 hash=1131312348559403219 conflicts=1 winner=2 victory=Science
+seed=40009 candidate_seat=1 turns=47 rounds_planned=47 hash=3580267504956039483 conflicts=4 winner=2 victory=Science
+seed=40009 candidate_seat=2 turns=47 rounds_planned=47 hash=3580267504956039483 conflicts=4 winner=2 victory=Science
+seed=40010 candidate_seat=1 turns=47 rounds_planned=47 hash=11277120973085881329 conflicts=16 winner=1 victory=Science
+seed=40010 candidate_seat=2 turns=45 rounds_planned=46 hash=9366937220052599300 conflicts=0 winner=2 victory=Science
+seed=40011 candidate_seat=1 turns=48 rounds_planned=48 hash=3108876307626131890 conflicts=22 winner=1 victory=Science
+seed=40011 candidate_seat=2 turns=45 rounds_planned=45 hash=6691481514753349252 conflicts=0 winner=2 victory=Science
+seed=40012 candidate_seat=1 turns=47 rounds_planned=47 hash=8804777365314465829 conflicts=20 winner=2 victory=Science
+seed=40012 candidate_seat=2 turns=48 rounds_planned=48 hash=18090346713693589278 conflicts=6 winner=1 victory=Science
+seed=40013 candidate_seat=1 turns=45 rounds_planned=45 hash=15983325724321809144 conflicts=20 winner=1 victory=Science
+seed=40013 candidate_seat=2 turns=48 rounds_planned=48 hash=6920058166834233064 conflicts=6 winner=2 victory=Science
+seed=40014 candidate_seat=1 turns=46 rounds_planned=46 hash=13135404255102403407 conflicts=17 winner=1 victory=Science
+seed=40014 candidate_seat=2 turns=48 rounds_planned=48 hash=5226936666231818613 conflicts=4 winner=2 victory=Science
+seed=40015 candidate_seat=1 turns=47 rounds_planned=47 hash=7431164959219915797 conflicts=16 winner=2 victory=Science
+seed=40015 candidate_seat=2 turns=47 rounds_planned=47 hash=3615279799252300672 conflicts=1 winner=2 victory=Science
+seed=40016 candidate_seat=1 turns=45 rounds_planned=45 hash=17209089539076472235 conflicts=13 winner=1 victory=Science
+seed=40016 candidate_seat=2 turns=48 rounds_planned=48 hash=124816453081943749 conflicts=4 winner=1 victory=Science
+seed=40017 candidate_seat=1 turns=47 rounds_planned=47 hash=2360743013639019126 conflicts=20 winner=1 victory=Science
+seed=40017 candidate_seat=2 turns=48 rounds_planned=48 hash=3992251257994048875 conflicts=2 winner=1 victory=Science
+seed=40018 candidate_seat=1 turns=48 rounds_planned=48 hash=17472645261561945824 conflicts=0 winner=1 victory=Science
+seed=40018 candidate_seat=2 turns=48 rounds_planned=48 hash=10130727691677501075 conflicts=0 winner=1 victory=Science
+seed=40019 candidate_seat=1 turns=49 rounds_planned=49 hash=6502385858329838248 conflicts=0 winner=1 victory=Science
+seed=40019 candidate_seat=2 turns=49 rounds_planned=49 hash=5350291189490023818 conflicts=0 winner=1 victory=Science
+seed=40020 candidate_seat=1 turns=50 rounds_planned=50 hash=12765120382826442550 conflicts=0 winner=1 victory=Science
+seed=40020 candidate_seat=2 turns=50 rounds_planned=50 hash=9707727394803997288 conflicts=0 winner=1 victory=Science
+seed=40021 candidate_seat=1 turns=48 rounds_planned=48 hash=10117329476395953081 conflicts=18 winner=1 victory=Science
+seed=40021 candidate_seat=2 turns=48 rounds_planned=48 hash=8465196063804146741 conflicts=2 winner=2 victory=Science
+seed=40022 candidate_seat=1 turns=46 rounds_planned=46 hash=1863108342881943223 conflicts=12 winner=1 victory=Science
+seed=40022 candidate_seat=2 turns=47 rounds_planned=47 hash=171393415933244679 conflicts=2 winner=2 victory=Science
+seed=40023 candidate_seat=1 turns=46 rounds_planned=46 hash=16798735588201012855 conflicts=15 winner=1 victory=Science
+seed=40023 candidate_seat=2 turns=48 rounds_planned=48 hash=3809186926293204960 conflicts=3 winner=2 victory=Science
+seed=40024 candidate_seat=1 turns=47 rounds_planned=47 hash=14029270611212817612 conflicts=20 winner=1 victory=Science
+seed=40024 candidate_seat=2 turns=48 rounds_planned=48 hash=8006780655398808214 conflicts=4 winner=1 victory=Science
+seed=40025 candidate_seat=1 turns=48 rounds_planned=48 hash=9082235728433350598 conflicts=16 winner=1 victory=Science
+seed=40025 candidate_seat=2 turns=44 rounds_planned=44 hash=17557487080568028150 conflicts=2 winner=2 victory=Science
+seed=40026 candidate_seat=1 turns=48 rounds_planned=48 hash=15258520126739802391 conflicts=3 winner=2 victory=Science
+seed=40026 candidate_seat=2 turns=48 rounds_planned=48 hash=18009981030700742662 conflicts=3 winner=2 victory=Science
+seed=40027 candidate_seat=1 turns=48 rounds_planned=48 hash=16111188538513965868 conflicts=19 winner=1 victory=Science
+seed=40027 candidate_seat=2 turns=47 rounds_planned=47 hash=6413099404528165200 conflicts=4 winner=2 victory=Science
+seed=40028 candidate_seat=1 turns=47 rounds_planned=47 hash=10501762681949738998 conflicts=20 winner=1 victory=Science
+seed=40028 candidate_seat=2 turns=48 rounds_planned=48 hash=16200297121752415892 conflicts=6 winner=1 victory=Science
+seed=40029 candidate_seat=1 turns=45 rounds_planned=45 hash=16451537815998901293 conflicts=21 winner=1 victory=Science
+seed=40029 candidate_seat=2 turns=48 rounds_planned=48 hash=4202223071442969840 conflicts=4 winner=2 victory=Science
+seed=40030 candidate_seat=1 turns=47 rounds_planned=47 hash=13568209057201955867 conflicts=0 winner=1 victory=Science
+seed=40030 candidate_seat=2 turns=48 rounds_planned=48 hash=6359887321499372918 conflicts=0 winner=1 victory=Science
+seed=40031 candidate_seat=1 turns=46 rounds_planned=46 hash=13989071705980728127 conflicts=3 winner=2 victory=Science
+seed=40031 candidate_seat=2 turns=48 rounds_planned=48 hash=1489012173664242786 conflicts=0 winner=1 victory=Science
+games=64 wins=44 losses=20 draws=0 errors=0 crashes=0 conflicts=501 win_bp=6875 planning_round_p95_upper_us=661
+player=three-layer science_wins=44 science_win_bp=6875 domination_wins=0 domination_win_bp=0
+player=v1 science_wins=20 science_win_bp=3125 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=135 paired_better=14 paired_worse=2 paired_tied=16 paired_sign_p_one_sided=2.09045410e-3
+wall_ms=1717
+
+candidate=three-layer opponent=greedy seeds=40000..=40031 turn_limit=500 workers=8
+games=64 wins=60 losses=4 draws=0 errors=0 crashes=0 conflicts=581 win_bp=9375 planning_round_p95_upper_us=2116
+player=three-layer science_wins=60 science_win_bp=9375 domination_wins=0 domination_win_bp=0
+player=greedy science_wins=4 science_win_bp=625 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=451 paired_better=28 paired_worse=0 paired_tied=4 paired_sign_p_one_sided=3.72529030e-9
+verified_identical_per_game_rows=64
+wall_ms=4093
+
+candidate=three-layer opponent=random seeds=40000..=40031 turn_limit=500 workers=8
+games=64 wins=64 losses=0 draws=0 errors=0 crashes=0 conflicts=85 win_bp=10000 planning_round_p95_upper_us=1132
+player=three-layer science_wins=53 science_win_bp=8281 domination_wins=11 domination_win_bp=1718
+player=random science_wins=0 science_win_bp=0 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=844 paired_better=32 paired_worse=0 paired_tied=0 paired_sign_p_one_sided=2.32830644e-10
+verified_identical_per_game_rows=64
+wall_ms=2945
+
+candidate=three-layer opponent=v1 seeds=40000..=40031 turn_limit=500 workers=8
+games=64 wins=44 losses=20 draws=0 errors=0 crashes=0 conflicts=501 win_bp=6875 planning_round_p95_upper_us=1010
+player=three-layer science_wins=44 science_win_bp=6875 domination_wins=0 domination_win_bp=0
+player=v1 science_wins=20 science_win_bp=3125 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=135 paired_better=14 paired_worse=2 paired_tied=16 paired_sign_p_one_sided=2.09045410e-3
+verified_identical_per_game_rows=64
+wall_ms=2886
+
+Compared with the release preceding the ranged-fire correction, 192 of 192 one-worker game rows matched.
+
+Independent confirmation on seeds 50000 through 50031
+
+The 32 confirmation seeds were selected before these games were run. The
+executable and parameters match the control cohort. This confirmation uses
+one planning worker and both seats against greedy and v1. No controller or
+parameter was adjusted between cohorts.
+
+Command: histeries tournament --opponent NAME --seed 50000 --seeds 32 --turns 500 --workers 1
+
+candidate=three-layer opponent=greedy seeds=50000..=50031 turn_limit=500 workers=1
+seed=50000 candidate_seat=1 turns=48 rounds_planned=48 hash=13031858077550752444 conflicts=31 winner=1 victory=Science
+seed=50000 candidate_seat=2 turns=46 rounds_planned=47 hash=18226288468929843535 conflicts=0 winner=2 victory=Science
+seed=50001 candidate_seat=1 turns=52 rounds_planned=52 hash=6297965250088383453 conflicts=0 winner=1 victory=Science
+seed=50001 candidate_seat=2 turns=47 rounds_planned=47 hash=4168994910635537229 conflicts=0 winner=2 victory=Science
+seed=50002 candidate_seat=1 turns=48 rounds_planned=48 hash=10832986015584338988 conflicts=19 winner=1 victory=Science
+seed=50002 candidate_seat=2 turns=48 rounds_planned=48 hash=4502585839507402576 conflicts=0 winner=2 victory=Science
+seed=50003 candidate_seat=1 turns=50 rounds_planned=50 hash=314321095883952915 conflicts=25 winner=1 victory=Science
+seed=50003 candidate_seat=2 turns=48 rounds_planned=48 hash=16571986534141491514 conflicts=0 winner=2 victory=Science
+seed=50004 candidate_seat=1 turns=48 rounds_planned=48 hash=15073632982092636328 conflicts=0 winner=1 victory=Science
+seed=50004 candidate_seat=2 turns=55 rounds_planned=55 hash=15576984490145100561 conflicts=0 winner=1 victory=Science
+seed=50005 candidate_seat=1 turns=49 rounds_planned=49 hash=15505904367564952524 conflicts=31 winner=1 victory=Science
+seed=50005 candidate_seat=2 turns=46 rounds_planned=46 hash=1579845144833755989 conflicts=0 winner=2 victory=Science
+seed=50006 candidate_seat=1 turns=48 rounds_planned=48 hash=9059070382832033691 conflicts=30 winner=1 victory=Science
+seed=50006 candidate_seat=2 turns=48 rounds_planned=48 hash=3967516200231378826 conflicts=0 winner=2 victory=Science
+seed=50007 candidate_seat=1 turns=52 rounds_planned=52 hash=4122626601084632653 conflicts=28 winner=1 victory=Science
+seed=50007 candidate_seat=2 turns=43 rounds_planned=44 hash=11400847309995127908 conflicts=0 winner=2 victory=Science
+seed=50008 candidate_seat=1 turns=48 rounds_planned=48 hash=1811689061527753369 conflicts=17 winner=1 victory=Science
+seed=50008 candidate_seat=2 turns=48 rounds_planned=48 hash=8618791777750079042 conflicts=0 winner=2 victory=Science
+seed=50009 candidate_seat=1 turns=49 rounds_planned=49 hash=3008501446110502022 conflicts=29 winner=1 victory=Science
+seed=50009 candidate_seat=2 turns=47 rounds_planned=48 hash=13950159762568451607 conflicts=0 winner=2 victory=Science
+seed=50010 candidate_seat=1 turns=48 rounds_planned=48 hash=18148442372777497825 conflicts=0 winner=1 victory=Science
+seed=50010 candidate_seat=2 turns=55 rounds_planned=55 hash=16229286904553944401 conflicts=0 winner=1 victory=Science
+seed=50011 candidate_seat=1 turns=49 rounds_planned=49 hash=3677145193981641323 conflicts=0 winner=1 victory=Science
+seed=50011 candidate_seat=2 turns=57 rounds_planned=57 hash=9754032407179881070 conflicts=0 winner=1 victory=Science
+seed=50012 candidate_seat=1 turns=49 rounds_planned=49 hash=11420055794367255827 conflicts=28 winner=1 victory=Science
+seed=50012 candidate_seat=2 turns=45 rounds_planned=45 hash=15417123980642248107 conflicts=0 winner=2 victory=Science
+seed=50013 candidate_seat=1 turns=48 rounds_planned=48 hash=15123311344479540886 conflicts=24 winner=1 victory=Science
+seed=50013 candidate_seat=2 turns=47 rounds_planned=47 hash=18016055152429823941 conflicts=0 winner=2 victory=Science
+seed=50014 candidate_seat=1 turns=50 rounds_planned=50 hash=5403243657460241121 conflicts=37 winner=1 victory=Science
+seed=50014 candidate_seat=2 turns=52 rounds_planned=52 hash=7370177859259373298 conflicts=2 winner=2 victory=Science
+seed=50015 candidate_seat=1 turns=48 rounds_planned=48 hash=8697093897755284752 conflicts=29 winner=1 victory=Science
+seed=50015 candidate_seat=2 turns=48 rounds_planned=48 hash=16300405779237871960 conflicts=0 winner=2 victory=Science
+seed=50016 candidate_seat=1 turns=48 rounds_planned=48 hash=14990582004296800100 conflicts=26 winner=1 victory=Science
+seed=50016 candidate_seat=2 turns=47 rounds_planned=47 hash=14155645615990768290 conflicts=0 winner=2 victory=Science
+seed=50017 candidate_seat=1 turns=48 rounds_planned=48 hash=3345653985029916342 conflicts=19 winner=1 victory=Science
+seed=50017 candidate_seat=2 turns=52 rounds_planned=52 hash=3754889490439939231 conflicts=0 winner=2 victory=Science
+seed=50018 candidate_seat=1 turns=49 rounds_planned=49 hash=15436916784265177350 conflicts=36 winner=1 victory=Science
+seed=50018 candidate_seat=2 turns=49 rounds_planned=49 hash=2992293859793697839 conflicts=0 winner=2 victory=Science
+seed=50019 candidate_seat=1 turns=49 rounds_planned=49 hash=16481091421817380079 conflicts=29 winner=1 victory=Science
+seed=50019 candidate_seat=2 turns=47 rounds_planned=47 hash=1266938308469631849 conflicts=2 winner=2 victory=Science
+seed=50020 candidate_seat=1 turns=48 rounds_planned=48 hash=2267820168332931281 conflicts=19 winner=1 victory=Science
+seed=50020 candidate_seat=2 turns=47 rounds_planned=47 hash=17326843349325821686 conflicts=0 winner=2 victory=Science
+seed=50021 candidate_seat=1 turns=49 rounds_planned=49 hash=6807374802358635482 conflicts=25 winner=1 victory=Science
+seed=50021 candidate_seat=2 turns=48 rounds_planned=48 hash=17377532369373705377 conflicts=0 winner=2 victory=Science
+seed=50022 candidate_seat=1 turns=49 rounds_planned=49 hash=11533893429736443176 conflicts=30 winner=1 victory=Science
+seed=50022 candidate_seat=2 turns=48 rounds_planned=48 hash=8207146293726554079 conflicts=0 winner=2 victory=Science
+seed=50023 candidate_seat=1 turns=49 rounds_planned=49 hash=17611929923335332554 conflicts=32 winner=1 victory=Science
+seed=50023 candidate_seat=2 turns=47 rounds_planned=47 hash=15678826165766686279 conflicts=2 winner=2 victory=Science
+seed=50024 candidate_seat=1 turns=49 rounds_planned=49 hash=7441770300034178645 conflicts=37 winner=1 victory=Science
+seed=50024 candidate_seat=2 turns=47 rounds_planned=47 hash=12094071654382982899 conflicts=0 winner=2 victory=Science
+seed=50025 candidate_seat=1 turns=49 rounds_planned=49 hash=9349277448923923835 conflicts=28 winner=1 victory=Science
+seed=50025 candidate_seat=2 turns=48 rounds_planned=48 hash=18170125757807557662 conflicts=3 winner=2 victory=Science
+seed=50026 candidate_seat=1 turns=48 rounds_planned=48 hash=10675441242389477068 conflicts=0 winner=1 victory=Science
+seed=50026 candidate_seat=2 turns=55 rounds_planned=55 hash=7655892596570328630 conflicts=0 winner=1 victory=Science
+seed=50027 candidate_seat=1 turns=49 rounds_planned=49 hash=10377549871631352751 conflicts=31 winner=1 victory=Science
+seed=50027 candidate_seat=2 turns=52 rounds_planned=52 hash=3531434526117907597 conflicts=0 winner=2 victory=Science
+seed=50028 candidate_seat=1 turns=48 rounds_planned=48 hash=8698663722968597910 conflicts=19 winner=1 victory=Science
+seed=50028 candidate_seat=2 turns=48 rounds_planned=48 hash=13515921811930170922 conflicts=0 winner=2 victory=Science
+seed=50029 candidate_seat=1 turns=48 rounds_planned=48 hash=6630998524877612330 conflicts=19 winner=1 victory=Science
+seed=50029 candidate_seat=2 turns=47 rounds_planned=47 hash=6510013560553773434 conflicts=0 winner=2 victory=Science
+seed=50030 candidate_seat=1 turns=49 rounds_planned=49 hash=5619793872128990223 conflicts=30 winner=1 victory=Science
+seed=50030 candidate_seat=2 turns=48 rounds_planned=48 hash=1848598353717511269 conflicts=0 winner=2 victory=Science
+seed=50031 candidate_seat=1 turns=50 rounds_planned=50 hash=2664097062944525355 conflicts=31 winner=1 victory=Science
+seed=50031 candidate_seat=2 turns=48 rounds_planned=48 hash=15256471537357667019 conflicts=0 winner=2 victory=Science
+games=64 wins=60 losses=4 draws=0 errors=0 crashes=0 conflicts=748 win_bp=9375 planning_round_p95_upper_us=593
+player=three-layer science_wins=60 science_win_bp=9375 domination_wins=0 domination_win_bp=0
+player=greedy science_wins=4 science_win_bp=625 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=451 paired_better=28 paired_worse=0 paired_tied=4 paired_sign_p_one_sided=3.72529030e-9
+wall_ms=2179
+
+candidate=three-layer opponent=v1 seeds=50000..=50031 turn_limit=500 workers=1
+seed=50000 candidate_seat=1 turns=47 rounds_planned=47 hash=1485455318159963301 conflicts=21 winner=1 victory=Science
+seed=50000 candidate_seat=2 turns=47 rounds_planned=47 hash=1680135873275731027 conflicts=1 winner=2 victory=Science
+seed=50001 candidate_seat=1 turns=48 rounds_planned=48 hash=12285896606348510643 conflicts=0 winner=2 victory=Science
+seed=50001 candidate_seat=2 turns=46 rounds_planned=46 hash=14741351017116886240 conflicts=1 winner=2 victory=Science
+seed=50002 candidate_seat=1 turns=47 rounds_planned=47 hash=14855905478375720665 conflicts=20 winner=1 victory=Science
+seed=50002 candidate_seat=2 turns=48 rounds_planned=48 hash=9539608051980534425 conflicts=4 winner=1 victory=Science
+seed=50003 candidate_seat=1 turns=48 rounds_planned=48 hash=8925689555507770153 conflicts=24 winner=1 victory=Science
+seed=50003 candidate_seat=2 turns=48 rounds_planned=48 hash=905840599122023490 conflicts=4 winner=2 victory=Science
+seed=50004 candidate_seat=1 turns=48 rounds_planned=48 hash=7492959631639498078 conflicts=0 winner=1 victory=Science
+seed=50004 candidate_seat=2 turns=49 rounds_planned=49 hash=12039848998451899005 conflicts=0 winner=1 victory=Science
+seed=50005 candidate_seat=1 turns=46 rounds_planned=46 hash=3400077666441087877 conflicts=21 winner=2 victory=Science
+seed=50005 candidate_seat=2 turns=46 rounds_planned=46 hash=15663665410101714057 conflicts=4 winner=2 victory=Science
+seed=50006 candidate_seat=1 turns=46 rounds_planned=46 hash=1614875121590983803 conflicts=12 winner=1 victory=Science
+seed=50006 candidate_seat=2 turns=48 rounds_planned=48 hash=14876438110370820259 conflicts=3 winner=2 victory=Science
+seed=50007 candidate_seat=1 turns=46 rounds_planned=46 hash=5211409930011264435 conflicts=12 winner=2 victory=Science
+seed=50007 candidate_seat=2 turns=43 rounds_planned=44 hash=7802464496416020389 conflicts=3 winner=2 victory=Science
+seed=50008 candidate_seat=1 turns=48 rounds_planned=48 hash=15611446858512692242 conflicts=23 winner=1 victory=Science
+seed=50008 candidate_seat=2 turns=48 rounds_planned=48 hash=10408024345169507191 conflicts=8 winner=1 victory=Science
+seed=50009 candidate_seat=1 turns=47 rounds_planned=47 hash=10553250789572738332 conflicts=18 winner=2 victory=Science
+seed=50009 candidate_seat=2 turns=48 rounds_planned=48 hash=10351089115318439430 conflicts=4 winner=2 victory=Science
+seed=50010 candidate_seat=1 turns=48 rounds_planned=48 hash=15374356942680138356 conflicts=1 winner=1 victory=Science
+seed=50010 candidate_seat=2 turns=48 rounds_planned=48 hash=15032624090197761274 conflicts=0 winner=1 victory=Science
+seed=50011 candidate_seat=1 turns=49 rounds_planned=49 hash=2737897804918185060 conflicts=0 winner=1 victory=Science
+seed=50011 candidate_seat=2 turns=49 rounds_planned=49 hash=8154028058007339091 conflicts=0 winner=1 victory=Science
+seed=50012 candidate_seat=1 turns=47 rounds_planned=47 hash=296805852260596341 conflicts=21 winner=2 victory=Science
+seed=50012 candidate_seat=2 turns=45 rounds_planned=45 hash=9580778581274998808 conflicts=2 winner=2 victory=Science
+seed=50013 candidate_seat=1 turns=46 rounds_planned=46 hash=1114581935026334833 conflicts=17 winner=2 victory=Science
+seed=50013 candidate_seat=2 turns=47 rounds_planned=47 hash=9693801818623955261 conflicts=8 winner=2 victory=Science
+seed=50014 candidate_seat=1 turns=48 rounds_planned=48 hash=6134687505283060938 conflicts=11 winner=2 victory=Science
+seed=50014 candidate_seat=2 turns=48 rounds_planned=49 hash=14405047015106513431 conflicts=0 winner=2 victory=Science
+seed=50015 candidate_seat=1 turns=46 rounds_planned=46 hash=11624334306427474022 conflicts=16 winner=1 victory=Science
+seed=50015 candidate_seat=2 turns=48 rounds_planned=48 hash=5704011587792319 conflicts=4 winner=1 victory=Science
+seed=50016 candidate_seat=1 turns=47 rounds_planned=47 hash=1260143142799621336 conflicts=19 winner=1 victory=Science
+seed=50016 candidate_seat=2 turns=47 rounds_planned=47 hash=14954228750808655968 conflicts=5 winner=2 victory=Science
+seed=50017 candidate_seat=1 turns=48 rounds_planned=48 hash=15502217183954311222 conflicts=17 winner=1 victory=Science
+seed=50017 candidate_seat=2 turns=48 rounds_planned=48 hash=17410570552561937883 conflicts=2 winner=1 victory=Science
+seed=50018 candidate_seat=1 turns=49 rounds_planned=49 hash=5665609054405427115 conflicts=26 winner=1 victory=Science
+seed=50018 candidate_seat=2 turns=49 rounds_planned=49 hash=7899450215824190826 conflicts=2 winner=2 victory=Science
+seed=50019 candidate_seat=1 turns=47 rounds_planned=47 hash=1734282526930492477 conflicts=11 winner=1 victory=Science
+seed=50019 candidate_seat=2 turns=47 rounds_planned=47 hash=17120096499295897131 conflicts=2 winner=2 victory=Science
+seed=50020 candidate_seat=1 turns=45 rounds_planned=45 hash=16516872167049797623 conflicts=18 winner=1 victory=Science
+seed=50020 candidate_seat=2 turns=47 rounds_planned=47 hash=247737730997581976 conflicts=2 winner=2 victory=Science
+seed=50021 candidate_seat=1 turns=45 rounds_planned=46 hash=6166928071091039242 conflicts=21 winner=1 victory=Science
+seed=50021 candidate_seat=2 turns=48 rounds_planned=48 hash=7549949725464545487 conflicts=5 winner=2 victory=Science
+seed=50022 candidate_seat=1 turns=47 rounds_planned=47 hash=4697771010382074334 conflicts=12 winner=1 victory=Science
+seed=50022 candidate_seat=2 turns=49 rounds_planned=49 hash=8599779276994449149 conflicts=2 winner=1 victory=Science
+seed=50023 candidate_seat=1 turns=47 rounds_planned=47 hash=1431929359876610527 conflicts=20 winner=1 victory=Science
+seed=50023 candidate_seat=2 turns=45 rounds_planned=46 hash=9859966824478979171 conflicts=0 winner=2 victory=Science
+seed=50024 candidate_seat=1 turns=47 rounds_planned=47 hash=11786945901721117017 conflicts=16 winner=1 victory=Science
+seed=50024 candidate_seat=2 turns=47 rounds_planned=47 hash=332674125319093838 conflicts=2 winner=2 victory=Science
+seed=50025 candidate_seat=1 turns=46 rounds_planned=46 hash=127106121538870437 conflicts=13 winner=1 victory=Science
+seed=50025 candidate_seat=2 turns=46 rounds_planned=46 hash=6543147963731179134 conflicts=3 winner=2 victory=Science
+seed=50026 candidate_seat=1 turns=48 rounds_planned=48 hash=16626538086949537484 conflicts=0 winner=1 victory=Science
+seed=50026 candidate_seat=2 turns=49 rounds_planned=49 hash=9805988240378870278 conflicts=0 winner=1 victory=Science
+seed=50027 candidate_seat=1 turns=47 rounds_planned=47 hash=13041044134044019090 conflicts=13 winner=2 victory=Science
+seed=50027 candidate_seat=2 turns=49 rounds_planned=49 hash=3799301144025352240 conflicts=2 winner=1 victory=Science
+seed=50028 candidate_seat=1 turns=48 rounds_planned=48 hash=11207720521018028256 conflicts=21 winner=1 victory=Science
+seed=50028 candidate_seat=2 turns=48 rounds_planned=48 hash=4913569215122104268 conflicts=2 winner=1 victory=Science
+seed=50029 candidate_seat=1 turns=46 rounds_planned=46 hash=14387419030035467311 conflicts=14 winner=1 victory=Science
+seed=50029 candidate_seat=2 turns=47 rounds_planned=47 hash=1033664008508681440 conflicts=4 winner=2 victory=Science
+seed=50030 candidate_seat=1 turns=47 rounds_planned=47 hash=10975062557266894532 conflicts=15 winner=1 victory=Science
+seed=50030 candidate_seat=2 turns=48 rounds_planned=48 hash=13935658578421039367 conflicts=2 winner=2 victory=Science
+seed=50031 candidate_seat=1 turns=47 rounds_planned=47 hash=7577845713695935704 conflicts=12 winner=1 victory=Science
+seed=50031 candidate_seat=2 turns=48 rounds_planned=48 hash=14482253018667612489 conflicts=4 winner=2 victory=Science
+games=64 wins=45 losses=19 draws=0 errors=0 crashes=0 conflicts=550 win_bp=7031 planning_round_p95_upper_us=653
+player=three-layer science_wins=45 science_win_bp=7031 domination_wins=0 domination_win_bp=0
+player=v1 science_wins=19 science_win_bp=2968 domination_wins=0 domination_win_bp=0
+elo_delta_smoothed=147 paired_better=14 paired_worse=1 paired_tied=17 paired_sign_p_one_sided=4.88281250e-4
+wall_ms=1597
+

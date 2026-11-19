@@ -1,5 +1,8 @@
 //! Repeatable per-layer timings for one contested seat observation.
-use histeries_ai::{VictoryObjective, operational, strategic, tactical};
+use histeries_ai::{
+    Player, ThreeLayerPlayer, ThreeLayerV1Player, VictoryObjective, operational, strategic,
+    tactical,
+};
 use histeries_hex::{FlatHex, TileId};
 use histeries_rules_core::{PlayerId, UnitId};
 use histeries_sim::{Command, MapState, Session, UnitKind};
@@ -51,6 +54,12 @@ fn main() {
         })
         .unwrap();
     let view = session.observe(seat).unwrap();
+    measure("v1_joint_plan", || {
+        ThreeLayerV1Player::default().plan(black_box(&view))
+    });
+    measure("v2_joint_plan", || {
+        ThreeLayerPlayer::default().plan(black_box(&view))
+    });
     measure("strategic", || {
         strategic::choose_objective(black_box(&view), Some(VictoryObjective::Science))
     });

@@ -1,0 +1,7 @@
+# Reference comparisons
+
+`cargo xtask parity` constructs each fixture's blank, non-wrapping plains map and creates seats numbered from 1. It dispatches the step's typed commands in order and advances the specified number of complete rounds. At each checkpoint it reads the selected player's observation. The command writes expected values, actual values, presence and pass/fail for every comparison to `target/gates/parity.json`. The fast gate runs this check on all three host platforms.
+
+The [designed fixtures](designed/) use expectations independently derived from the cited game rules. For example, [city growth](designed/city-growth.json) predicts eight stored food after four rounds and population two after the fifth from ADR-0007. The [observed suite](oracle/) accepts measurements supplied by the maintainer. The two provenance categories are reported separately.
+
+A version 1 fixture has `version`, `provenance`, `source`, `players`, `width`, `height` and a nonempty `steps` array. Each step may contain `commands` and `rounds`, followed by one or more `checks`. A check specifies a numeric seat ID, a JSON Pointer into that seat's observation and an expected JSON value. Exact comparisons cover numbers, arrays, strings, booleans and explicit nulls. An optional unsigned `tolerance` sets an inclusive absolute difference for signed integer expectations. A missing field fails even if the expectation is null. A malformed fixture, rejected command or failed measurement makes the command exit with an error.

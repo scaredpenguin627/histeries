@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod parity;
 mod soak;
 
 use std::{
@@ -144,6 +145,10 @@ fn ci_fast(root: &Path) -> bool {
     );
     ok &= run("cargo", &["deny", "check"], root);
     ok &= run("cargo", &["nextest", "run", "--workspace"], root);
+    if let Err(error) = parity::run(root) {
+        eprintln!("{error}");
+        ok = false;
+    }
     ok &= ohos_check(root);
     ok &= run(
         "cargo",
@@ -185,6 +190,13 @@ fn main() -> ExitCode {
                 println!("dependency layers are valid");
                 ExitCode::SUCCESS
             }
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        },
+        Some("parity") => match parity::run(&root) {
+            Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("{error}");
                 ExitCode::FAILURE
@@ -251,7 +263,7 @@ fn main() -> ExitCode {
         }
         None => {
             eprintln!(
-                "usage: cargo xtask <layers|ci-fast|fixture fast|nightly|weekly|soak|memgate|ohos-check>"
+                "usage: cargo xtask <layers|ci-fast|parity|fixture fast|nightly|weekly|soak|memgate|ohos-check>"
             );
             ExitCode::FAILURE
         }

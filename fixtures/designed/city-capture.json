@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "provenance": "designed",
+  "source": "ADRs 0008/0013: an adjacent melee unit with movement transfers a cleared enemy city. Sole ownership wins domination immediately and spends the attacker's remaining movement.",
+  "players": 2,
+  "width": 6,
+  "height": 1,
+  "steps": [
+    {
+      "commands": [
+        { "command": "unit.spawn", "player": 1, "unit": 11, "kind": "settler", "tile": 0 },
+        { "command": "city.found", "player": 1, "unit": 11, "city": 11 },
+        { "command": "unit.spawn", "player": 2, "unit": 22, "kind": "settler", "tile": 5 },
+        { "command": "city.found", "player": 2, "unit": 22, "city": 22 },
+        { "command": "unit.spawn", "player": 1, "unit": 33, "kind": "warrior", "tile": 4 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/victory", "expected": null },
+        { "seat": 2, "pointer": "/cities/0/id", "expected": 22 }
+      ]
+    },
+    {
+      "commands": [
+        { "command": "unit.capture_city", "player": 1, "unit": 33, "city": 22 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/victory", "expected": "domination" },
+        { "seat": 1, "pointer": "/cities/1/id", "expected": 22 },
+        { "seat": 2, "pointer": "/cities", "expected": [] },
+        { "seat": 1, "pointer": "/units/0/movement", "expected": 0 }
+      ]
+    }
+  ]
+}

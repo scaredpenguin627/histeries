@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "provenance": "designed",
+  "source": "ADRs 0007/0015 and base unit table: a friendly warrior and builder share a tile. Construction spends one of three charges and all movement. The next round restores two movement points.",
+  "players": 2,
+  "width": 5,
+  "height": 1,
+  "steps": [
+    {
+      "commands": [
+        { "command": "unit.spawn", "player": 1, "unit": 1, "kind": "warrior", "tile": 0 },
+        { "command": "unit.spawn", "player": 1, "unit": 2, "kind": "builder", "tile": 0 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/visible_tiles/0/units/military", "expected": 1 },
+        { "seat": 1, "pointer": "/visible_tiles/0/units/civilian", "expected": 2 },
+        { "seat": 1, "pointer": "/units/1/charges", "expected": 3 },
+        { "seat": 1, "pointer": "/visible_tiles/0/road", "expected": false }
+      ]
+    },
+    {
+      "commands": [
+        { "command": "unit.build_road", "player": 1, "unit": 2 }
+      ],
+      "checks": [
+        { "seat": 1, "pointer": "/units/1/charges", "expected": 2 },
+        { "seat": 1, "pointer": "/units/1/movement", "expected": 0 },
+        { "seat": 1, "pointer": "/visible_tiles/0/road", "expected": true }
+      ]
+    },
+    {
+      "rounds": 1,
+      "checks": [
+        { "seat": 1, "pointer": "/units/1/movement", "expected": 2 },
+        { "seat": 1, "pointer": "/units/1/charges", "expected": 2 },
+        { "seat": 1, "pointer": "/visible_tiles/0/road", "expected": true }
+      ]
+    }
+  ]
+}

@@ -80,23 +80,80 @@ impl ThreeLayerPlayer {
             incumbent: Some((seat, objective)),
         }
     }
-}
 
-impl Player for ThreeLayerPlayer {
-    fn plan(&mut self, observation: &Observation) -> PlayerPlan {
+    /// Plan with the fixed Phase 1 policy for historical tournament comparisons.
+    pub fn plan_v1(&mut self, observation: &Observation) -> PlayerPlan {
+        self.plan_version(observation, PlannerVersion::V1)
+    }
+
+    fn plan_version(&mut self, observation: &Observation, version: PlannerVersion) -> PlayerPlan {
         let previous = self
             .incumbent
             .filter(|(seat, _)| *seat == observation.seat())
             .map(|(_, objective)| objective);
-        let objective = strategic::choose_objective(observation, previous);
+        let objective = strategic::evaluate(observation, previous, version);
         self.incumbent = Some((observation.seat(), objective));
         let mut operations = Vec::new();
         let mut commands = Vec::new();
         if observation.victory().is_none() {
-            commands = operational::plan(observation, objective, &mut operations);
-            commands.extend(tactical::plan(observation, &mut operations));
+            commands = operational::layered(observation, objective, &mut operations, version);
+            // Completing the final technology can win on dispatch. A later
+            // capture would be illegal even on this plan's original snapshot.
+            if version == PlannerVersion::V2 && immediate_science_victory(observation, &operations)
+            {
+                for unit in observation
+                    .units()
+                    .iter()
+                    .filter(|unit| unit.kind.is_military())
+                {
+                    operations.push(Operation::UnitAction(unit.id));
+                    commands.push(Command::UnitHold {
+                        player: observation.seat(),
+                        unit: unit.id,
+                    });
+                }
+            } else {
+                commands.extend(tactical::layered(observation, &mut operations, version));
+            }
         }
         finish(observation, objective, operations, commands)
+    }
+}
+
+fn immediate_science_victory(observation: &Observation, operations: &[Operation]) -> bool {
+    let rules = base_ruleset();
+    let mut completed = observation.progress().technologies.len();
+    let mut bank = observation.progress().technology_progress;
+    for op in operations {
+        if let Operation::ResearchTechnology(id) = op
+            && let Some(node) = rules.technology(id)
+        {
+            bank -= i64::from(node.cost());
+            completed += 1;
+        }
+    }
+    !observation.cities().is_empty() && bank >= 0 && completed == rules.technologies().count()
+}
+
+impl Player for ThreeLayerPlayer {
+    fn plan(&mut self, observation: &Observation) -> PlayerPlan {
+        self.plan_version(observation, PlannerVersion::V2)
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum PlannerVersion {
+    V1,
+    V2,
+}
+
+/// Fixed Phase 1 controller. Its incumbent is independent of the candidate's.
+#[derive(Clone, Debug, Default)]
+pub struct ThreeLayerV1Player(ThreeLayerPlayer);
+
+impl Player for ThreeLayerV1Player {
+    fn plan(&mut self, observation: &Observation) -> PlayerPlan {
+        self.0.plan_v1(observation)
     }
 }
 

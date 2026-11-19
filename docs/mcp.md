@@ -14,4 +14,13 @@ For example, send this argument object to `dispatch` to research the first base 
 {"id":"research.technology","args":{"technology":"tech_01"}}
 ```
 
-For an external-agent acceptance run, start a fresh two-seat stdio game with seed 20261119. Give the connected agent the objective “Play seat one to a declared victory using only Histeries MCP tools and resources. Report the winner, victory type and turn, then check the result with replay.” Record the requests and responses from discovery through the terminal replay. Either seat can win. The [recorded 87-exchange run](sessions/2026-11-19-mcp-llm-game.jsonl.gz) ended on turn 60 with a science victory for the greedy opponent. The HTTP integration test separately exercises two independently authenticated clients through a science victory.
+## External-agent acceptance
+
+Launch `histeries mcp --players 2 --seed N` with the seat 1 credentials above. Connect an external LLM host over stdio and ask it to play seat 1 to a declared victory using the MCP tools and resources, report the winning seat, victory type and turn, and check its result with `replay`. Record each JSON-RPC request and response from protocol discovery through the terminal replay. Either player may win.
+
+| Seed | Wire exchanges | Agent actions and result |
+| --- | ---: | --- |
+| 20261119 | 87 | The agent issued 19 accepted orders and advanced 60 turns. Its terminal replay showed seat 2 won by science on turn 60. [Transcript](sessions/2026-11-19-mcp-llm-game.jsonl.gz) |
+| 20261120 | 132 | The agent discovered the tools and command schemas, scouted with a warrior, fought, captured cities and adopted a science policy. It issued 56 accepted orders and received six command rejections. Its final observation and replay showed seat 2 won by science on turn 57. [Transcript](sessions/2026-11-19-phase2-mcp-game.jsonl.gz) |
+
+Run `cargo test -p histeries-cli --test mcp recorded_agent` to play both transcripts against fresh CLI subprocesses. Each test sends only the archived requests over stdio and compares the live responses with the observations, rules and command outcomes the agent received. Both check that further turn advancement fails after victory. The test runs offline once dependencies are installed. The HTTP test in the same suite also plays two independently authenticated seats through a science victory.

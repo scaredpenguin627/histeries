@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::{Operation, VictoryObjective, base_ruleset};
+use crate::{Operation, PlannerVersion, VictoryObjective, base_ruleset};
 use histeries_hex::TileId;
 use histeries_rules_core::NamedRng;
 use histeries_sim::{
@@ -16,7 +16,16 @@ pub fn plan(
     objective: VictoryObjective,
     operations: &mut Vec<Operation>,
 ) -> Vec<Command> {
-    economy(observation, Policy::Layered(objective), operations)
+    layered(observation, objective, operations, PlannerVersion::V2)
+}
+
+pub(crate) fn layered(
+    observation: &Observation,
+    objective: VictoryObjective,
+    operations: &mut Vec<Operation>,
+    version: PlannerVersion,
+) -> Vec<Command> {
+    economy(observation, Policy::Layered(objective, version), operations)
 }
 
 /// Select the best immediately available economic return, without planning prerequisites.
@@ -34,7 +43,7 @@ pub fn random(
 }
 
 pub(super) enum Policy<'a> {
-    Layered(VictoryObjective),
+    Layered(VictoryObjective, PlannerVersion),
     Greedy,
     Random(&'a mut NamedRng),
 }
@@ -63,7 +72,7 @@ fn economy(
         return Vec::new();
     }
     let player = observation.seat();
-    let layered = matches!(policy, Policy::Layered(_));
+    let layered = matches!(policy, Policy::Layered(..));
     let (mut commands, mut reserved) =
         crate::settlement::plan_settlers(observation, operations, &mut policy);
     let vacated: BTreeSet<_> = commands
@@ -93,6 +102,13 @@ fn economy(
         .flat_map(|city| city.production.iter().chain(&city.waiting))
         .filter(|item| matches!(item, ProductionItem::Unit(kind) if kind.is_military()))
         .count();
+    let mut has_assault_unit = observation.units().iter().any(|u| u.kind.is_military() && u.kind.range() == 1)
+        || observation.cities().iter().flat_map(|c| c.production.iter().chain(&c.waiting))
+            .any(|item| matches!(item, ProductionItem::Unit(kind) if kind.is_military() && kind.range() == 1));
+    let enemy_city = observation
+        .visible_cities()
+        .iter()
+        .any(|city| city.owner != player);
     let hostiles = observation
         .visible_units()
         .iter()
@@ -107,16 +123,41 @@ fn economy(
         }
         let sites = city_sites(observation, city.tile, &reserved, &vacated);
         let next = match policy {
-            Policy::Layered(objective) => {
+            Policy::Layered(objective, version) => {
                 let demand = if objective == VictoryObjective::Domination {
                     hostiles
                 } else {
                     hostiles.min(2)
                 };
-                if sites.can_spawn_military && military < demand {
+                if sites.can_spawn_military
+                    && version == PlannerVersion::V2
+                    && objective == VictoryObjective::Domination
+                    && enemy_city
+                    && !has_assault_unit
+                {
+                    Some((None, ProductionItem::Unit(UnitKind::Warrior)))
+                } else if sites.can_spawn_military && military < demand {
                     Some((None, ProductionItem::Unit(UnitKind::Archer)))
                 } else {
-                    let site = sites.tiles.first().copied();
+                    let site = if version == PlannerVersion::V2 {
+                        // New districts and their existing neighbors both earn adjacency.
+                        sites.tiles.iter().copied().max_by_key(|tile| {
+                            let i = observation
+                                .visible_tiles()
+                                .binary_search_by_key(tile, |t| t.tile)
+                                .expect("site was selected from visible tiles");
+                            let neighbors = &observation.visible_tiles()[i].neighbors;
+                            let edges = usize::from(neighbors.contains(&city.tile))
+                                + 2 * city
+                                    .districts
+                                    .iter()
+                                    .filter(|d| neighbors.contains(&d.tile))
+                                    .count();
+                            (edges, std::cmp::Reverse(*tile))
+                        })
+                    } else {
+                        sites.tiles.first().copied()
+                    };
                     development(city, site, sites.can_spawn_civilian, horizon, &mut policy)
                 }
             }
@@ -133,7 +174,10 @@ fn economy(
                 ProductionItem::District { tile, .. } => {
                     reserved.insert(tile);
                 }
-                ProductionItem::Unit(kind) if kind.is_military() => military += 1,
+                ProductionItem::Unit(kind) if kind.is_military() => {
+                    military += 1;
+                    has_assault_unit |= kind.range() == 1;
+                }
                 _ => {}
             }
             operations.push(Operation::Produce(city.id, item));
@@ -142,6 +186,18 @@ fn economy(
                 city: city.id,
                 item,
             });
+            if matches!(policy, Policy::Layered(_, PlannerVersion::V2))
+                && matches!(item, ProductionItem::District { .. })
+                && let Some(building) = goal
+            {
+                let item = ProductionItem::Building(building);
+                commands.push(Command::CityEnqueueProduction {
+                    player,
+                    city: city.id,
+                    item,
+                });
+                operations.push(Operation::Produce(city.id, item));
+            }
         }
     }
     plan_progress(observation, &mut policy, operations, &mut commands);
@@ -412,7 +468,7 @@ fn plan_progress(
     let rules = base_ruleset();
     let mut priorities = BTreeSet::new();
     let mut pending = Vec::new();
-    if matches!(policy, Policy::Layered(_))
+    if matches!(policy, Policy::Layered(..))
         && let Some(goal) = rules
             .policies()
             .filter(|policy| policy.science_bonus() > 0)
@@ -587,7 +643,7 @@ fn research_path<'a>(
                 // The layered player may favor a policy prerequisite or a target
                 // that can keep gaining science while a rival city is out of sight.
                 let continue_research =
-                    matches!(policy, Policy::Layered(_)) && !can_chain && i64::from(cost) > bank;
+                    matches!(policy, Policy::Layered(..)) && !can_chain && i64::from(cost) > bank;
                 (
                     (
                         priority.contains(id),
