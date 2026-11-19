@@ -11,6 +11,8 @@ pub use app::GameApp;
 #[cfg(not(target_env = "ohos"))]
 mod font;
 mod game;
+#[cfg(not(target_env = "ohos"))]
+mod mod_manager;
 pub use game::ClientSession;
 #[cfg(not(any(target_env = "ohos", target_arch = "wasm32")))]
 mod native;

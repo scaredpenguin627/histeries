@@ -16,11 +16,14 @@ histeries-ai = { path = "../ai" }
 histeries-hex = { path = "../hex" }
 histeries-rules-core = { path = "../rules-core" }
 histeries-ruleset = { path = "../ruleset" }
-histeries-sim = { path = "../sim" }
+histeries-sim = { path = "../sim", features = ["extension-files"] }
 
 # The OHOS shell is deferred until its window and Vulkan backends are available.
 [target.'cfg(not(target_env = "ohos"))'.dependencies]
-eframe = { version = "=0.37.0", default-features = false, features = ["wgpu_no_default_features", "wayland", "x11"] }
+eframe = { version = "=0.37.0", default-features = false, features = ["wgpu_no_default_features", "wayland", "x11", "persistence"] }
+base64 = "=0.23.1"
+serde.workspace = true
+serde_json = "=1.0.154"
 wgpu = { version = "=30.0.2", default-features = false, features = ["dx12", "metal", "vulkan", "webgpu", "wgsl", "fragile-send-sync-non-atomic-wasm"] }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_env = "ohos")))'.dependencies]
@@ -31,3 +34,6 @@ tempfile = "=3.27.0"
 [target.'cfg(all(target_os = "linux", not(target_env = "ohos")))'.dependencies]
 winit = { version = "=0.30.13", default-features = false, features = ["wayland-dlopen"] }
 
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "=0.4.80"

@@ -206,26 +206,38 @@ impl ScenarioDraft {
             }
         };
         commands.push(command);
-        self.edit(|host| host.dispatch_editor_batch(player, commands.iter().cloned()))?;
-        Ok(commands)
+        self.edit(|host| {
+            let bytes = host.dispatch_editor_batch(player, commands.iter().cloned())?;
+            Ok((bytes, commands))
+        })
     }
 
-    fn edit(
+    /// Applies a complete package as one undoable change and returns its command count.
+    #[cfg(feature = "extensions")]
+    pub fn apply_package(
         &mut self,
-        operation: impl FnOnce(&mut MatchHost) -> Result<Vec<u8>, String>,
-    ) -> Result<(), String> {
+        package: &crate::extensions::Package,
+        player: PlayerId,
+    ) -> Result<usize, String> {
+        self.edit(|host| package.apply_and_snapshot(host, player))
+    }
+
+    fn edit<T>(
+        &mut self,
+        operation: impl FnOnce(&mut MatchHost) -> Result<(Vec<u8>, T), String>,
+    ) -> Result<T, String> {
         let session = Session::from_save_bytes(self.bytes()).map_err(|e| e.to_string())?;
         let mut host = MatchHost::new(session);
-        let bytes = operation(&mut host)?;
+        let (bytes, result) = operation(&mut host)?;
         if bytes == self.bytes() {
-            return Ok(());
+            return Ok(result);
         }
         let board = host
             .observe_editor(self.seats[0])
             .map_err(|e| e.to_string())?;
         self.remember(bytes);
         self.board = board;
-        Ok(())
+        Ok(result)
     }
 
     fn remember(&mut self, bytes: Vec<u8>) {
@@ -248,6 +260,39 @@ impl ScenarioDraft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "extensions")]
+    #[test]
+    fn one_undo_restores_all_edits_from_a_package() {
+        let module = wat::parse_str(
+            r#"(module
+                (import "histeries_editor_v1" "emit" (func $emit (param i32 i32 i32)))
+                (func (export "apply") (result i32)
+                    (call $emit (i32.const 0) (i32.const 1) (i32.const 1))
+                    (call $emit (i32.const 1) (i32.const 1) (i32.const 1))
+                    (i32.const 0)))"#,
+        )
+        .unwrap();
+        let manifest = include_bytes!("../../../data/extensions/woodland/manifest.toml");
+        let package = crate::extensions::Package::from_bytes(manifest, &module).unwrap();
+        let mut draft = ScenarioDraft::blank(2, 1, 2).unwrap();
+        let seat = draft.seats()[1];
+        let original = draft.bytes().to_vec();
+        assert_eq!(draft.apply_package(&package, seat).unwrap(), 2);
+        assert!(
+            draft
+                .board()
+                .visible_tiles()
+                .iter()
+                .all(|tile| tile.feature == Feature::Forest)
+        );
+        let planted = draft.bytes().to_vec();
+        draft.travel(false).unwrap();
+        assert_eq!(draft.bytes(), original);
+        assert!(!draft.can_undo());
+        draft.travel(true).unwrap();
+        assert_eq!(draft.bytes(), planted);
+    }
 
     #[test]
     fn founding_batch_replays_from_the_pre_edit_snapshot() {
@@ -330,6 +375,7 @@ mod tests {
                         kind: UnitKind::Warrior,
                     }),
                 )
+                .map(|bytes| (bytes, ()))
             })
             .unwrap();
         draft

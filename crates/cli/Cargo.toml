@@ -17,7 +17,7 @@ histeries-mcp = { path = "../mcp" }
 histeries-hex = { path = "../hex" }
 histeries-rules-core = { path = "../rules-core" }
 histeries-ruleset = { path = "../ruleset" }
-histeries-sim = { path = "../sim" }
+histeries-sim = { path = "../sim", features = ["extension-files"] }
 serde.workspace = true
 serde_json = "=1.0.154"
 

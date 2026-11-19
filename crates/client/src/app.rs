@@ -4,7 +4,9 @@ const REPLACE_SCENARIO: &str =
     "Continuing replaces the current scenario and its undo history. Save a copy to keep it.";
 const REPLACE_GAME: &str = "Continuing replaces the current game and discards its editor draft. Save any changes you want to keep.";
 
-use crate::{editor::Editor, font, game::ClientSession, presenter::Presenter};
+use crate::{
+    editor::Editor, font, game::ClientSession, mod_manager::ModManager, presenter::Presenter,
+};
 
 #[derive(Clone, Copy, PartialEq)]
 enum FileAction {
@@ -39,6 +41,7 @@ pub struct GameApp {
     game: ClientSession,
     playtest: Option<(ClientSession, Presenter)>,
     editor: Option<Editor>,
+    mods: ModManager,
     editing: bool,
     dimensions: [u32; 3],
     presenter: Presenter,
@@ -55,14 +58,15 @@ impl GameApp {
     /// Presents an existing session and initializes the client font atlas.
     pub fn new(cc: &eframe::CreationContext<'_>, game: ClientSession) -> Self {
         font::install(&cc.egui_ctx);
-        Self::with_game(game)
+        Self::with_game(game, ModManager::restore(cc.storage))
     }
 
-    fn with_game(game: ClientSession) -> Self {
+    fn with_game(game: ClientSession, mods: ModManager) -> Self {
         Self {
             game,
             playtest: None,
             editor: None,
+            mods,
             editing: false,
             dimensions: [12, 9, 2],
             presenter: Presenter::default(),
@@ -244,8 +248,9 @@ fn file_name(path: &std::path::Path) -> String {
 }
 
 impl eframe::App for GameApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let mut edit = false;
+        let mut mods = false;
         let mut play = false;
         let mut resume = false;
         let mut file = None;
@@ -290,6 +295,10 @@ impl eframe::App for GameApp {
                             file = Some(FileAction::FromGame);
                             ui.close();
                         }
+                        if ui.button("Mod manager").clicked() {
+                            mods = true;
+                            ui.close();
+                        }
                         if ui.button("Playtest scenario").clicked() {
                             play = true;
                             ui.close();
@@ -321,6 +330,14 @@ impl eframe::App for GameApp {
         if resume {
             self.return_to_game();
         }
+        if mods {
+            self.mods.open();
+        }
+        if let Some(editor) = self.editor.as_mut().filter(|_| self.editing) {
+            self.mods
+                .show(ui.ctx(), |package| editor.apply_package(package));
+            self.mods.save_changes(frame.storage_mut());
+        }
         if let Some(action) = file {
             self.dialog = Some(action);
             self.error.clear();
@@ -345,7 +362,7 @@ mod tests {
 
     #[test]
     fn playtesting_a_retained_or_blank_draft_preserves_the_live_match() {
-        let mut app = GameApp::with_game(ClientSession::new(7).unwrap());
+        let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
         app.open_editor().unwrap();
         let draft = app.editor.as_ref().unwrap().bytes().to_vec();
         app.return_to_game();
@@ -402,7 +419,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn starting_or_opening_a_game_discards_its_predecessors_draft() {
-        let mut app = GameApp::with_game(ClientSession::new(7).unwrap());
+        let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
         let directory = tempfile::tempdir().unwrap();
         app.game_path = directory.path().join("original.hst").display().to_string();
         app.execute(FileAction::Save).unwrap();
@@ -426,7 +443,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn failed_game_replacement_preserves_the_live_match_and_its_retained_draft() {
-        let mut app = GameApp::with_game(ClientSession::new(7).unwrap());
+        let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
         app.open_editor().unwrap();
         app.execute(FileAction::New).unwrap();
         let draft = app.editor.as_ref().unwrap().bytes().to_vec();
@@ -459,7 +476,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn game_and_scenario_files_round_trip_independently() {
-        let mut app = GameApp::with_game(ClientSession::new(7).unwrap());
+        let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
         assert_eq!(app.game_path, "histeries.hst");
         assert_eq!(app.scenario_path, "scenario.hst");
         let directory = tempfile::tempdir().unwrap();

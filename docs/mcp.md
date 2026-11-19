@@ -16,6 +16,8 @@ For example, send this argument object to `dispatch` to research the first base 
 {"id":"research.technology","args":{"technology":"tech_01"}}
 ```
 
+Editor credentials can call `apply_editor_package` with a TOML manifest and a Base64-encoded Wasm module. The connection selects the seat. The tool returns a package ID and an accepted command count after atomic validation. The ABI reference is also available as `histeries://docs/editor-packages`. [Package format and example](editor-packages.md)
+
 ## External-agent acceptance
 
 Launch `histeries mcp --players 2 --seed N` with the seat 1 credentials above. Connect an external LLM host over stdio and ask it to play seat 1 to a declared victory using the MCP tools and resources, report the winning seat, victory type and turn, and check its result with `replay`. Record each JSON-RPC request and response from protocol discovery through the terminal replay. Either player may win.
