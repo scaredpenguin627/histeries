@@ -14,6 +14,18 @@ The hosted fast gate on editor source `9e3ed6cd5c16` passed with restored Cargo 
 
 The implementation commit immediately before this measurement has Git tree `a6ea81f80693224d205588e3cb4d55f519f9d64e`. On Windows GNU it passed the warm fast gate in 59.101 seconds. All 175 workspace tests and 34 parity checks passed, with 1,200 matching round hashes across six fixtures. Thirteen ABI tests also passed on wasm32. Coverage included CLI and MCP package invocation, four native manager tests and single-step undo and redo of a two-command package. An earlier concurrent native test rebuild exceeded the 900-second local budget at 2,576.511 seconds. [Editor package report](sessions/2026-11-19-phase3-extensions.md)
 
+### P3-04 browser client
+
+GitHub Actions measured the following results on PR #11, revision `79977c65564c`, attempt 1. The three fast-gate times come from the runners' `ci-fast.json` artifacts. Each passed the 900-second budget. [Workflow run and artifacts](https://github.com/scaredpenguin627/histeries/actions/runs/44778930058)
+
+| Hosted fast gate | Elapsed |
+| --- | ---: |
+| Linux | 207.194 s |
+| macOS | 307.127 s |
+| Windows MSVC | 543.587 s |
+
+The Linux Web job took 186 s from job start to completion. Chrome and ChromeDriver 157.0.8103.78 used Google SwiftShader. The release Wasm module was 9,825,595 bytes and the downloadable site archive was 2,727,896 bytes. The comparison job matched the turn-1 game and both scenario saves before and after applying Woodland against their native counterparts, byte for byte. [Web job](https://github.com/scaredpenguin627/histeries/actions/runs/44778930058/job/136436144294) · [Cross-platform and save comparisons](https://github.com/scaredpenguin627/histeries/actions/runs/44778930058)
+
 ## Phase 2 measurements · 2026-11-19
 
 Three-seat stdio planning matched the expected unit positions and hit points on live advancement, save/resume and replay. [Regression results](sessions/2026-11-19-stdio-bot-snapshot.md)

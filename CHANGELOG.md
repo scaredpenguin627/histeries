@@ -4,9 +4,11 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added a static WebGPU browser client with separate local saves for games and scenario drafts.
+
 - Added a graphical scenario editor with full-map inspection, validated brushes, undo and redo, and interoperable saves. A fog-filtered playtest keeps the original game and draft available when the author returns.
 
-- Added the desktop scenario mod manager and a fuel-metered WebAssembly editor ABI for desktop, CLI and authorized MCP editors. Browser package input is implemented for verification in P3-04.
+- Added the desktop scenario mod manager and a fuel-metered WebAssembly editor ABI for desktop, CLI and authorized MCP editors. The browser file picker imports a manifest and its plugin for use in the scenario editor.
 
 - Added a native 2D game client with a fog-filtered hex map, seat orders, computer opponents and interoperable saves.
 

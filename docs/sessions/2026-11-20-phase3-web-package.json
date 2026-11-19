@@ -1,0 +1,72 @@
+{
+  "woodland": {
+    "map_dimensions": [
+      12,
+      9
+    ],
+    "tile_count": 108,
+    "changed_tiles": 1,
+    "tile_id": 1,
+    "field": "feature",
+    "before": "none",
+    "after": "forest",
+    "bytes_changed": 1,
+    "manifest_sha256": "482614905ad3062ca7199a992000406c94c1160b8fbd1d76963325b5222f0b74",
+    "plugin_sha256": "fcc6fef1d1ca142fc2fdef21bb41e1b0ff3aad2d8169026451816aeb2c0d9098"
+  },
+  "linux": {
+    "runtime": {
+      "browser": "chrome",
+      "version": "157.0.8103.38",
+      "platform": "linux",
+      "chromeDriver": "157.0.8103.38 (a733b5afbb3ba618844ff8876b89ad1a774b2f18-refs/branch-heads/8103@{#1034})",
+      "adapter": {
+        "architecture": "swiftshader",
+        "description": "",
+        "device": "",
+        "fallback": true,
+        "vendor": "google"
+      }
+    },
+    "bundle": {
+      "index.html": "80bc1ca4ae5dbaab91688a226dd04531234d6a48d256e0faa006af2fe4b344eb",
+      "pkg/histeries_client.js": "80d2ced63e5298abed98b04ad40e4c89f55b0fb3efe326dad41d7ad96456e871",
+      "pkg/histeries_client_bg.wasm": "70b6fa6bfa4a6dd15571dc44a09aba515498e5a9d11569315cb6607eb16b56bd",
+      "histeries-phase3-web.zip": {
+        "bytes": 2693650,
+        "sha256": "d6835b071cb72415c1b36c5cf5d1e1ea845830a5dc0f8f4c25ba80e7a93e3c1f"
+      }
+    },
+    "script_sha256": "b09287a3d2c03a4e49d13883401a4590136239892ba4699324e69d80aa0af8f1",
+    "native_reference_sha256": {
+      "after-woodland": "d6238a8f6ccad4ddf15e1085693e5215df88900e5ff53eaf1cbec5a3b8c13e1c",
+      "before-woodland": "89a5dc2870d891e052a5d21bb5a64099dfe340346a199ebe6366cd96d3e7461b",
+      "turn-1": "7f3a55bc6d5916418f6e24da58124c2709abce5319137a5cf4fea02beec92d5e"
+    },
+    "browser_save_comparison": "All three saves matched the native reference byte for byte.",
+    "screenshots": {
+      "web.png": {
+        "width": 1200,
+        "height": 657,
+        "sampled_colors": 229,
+        "sha256": "9ddb9817f8a52d7ca359904a4f347730aaa63617c7fcced931315a0791291afb"
+      },
+      "web-woodland.png": {
+        "width": 1200,
+        "height": 657,
+        "sampled_colors": 371,
+        "sha256": "c0452eaa9daf7cfbbe7231314bda5264cfd03b69dc43c656ef800226e446f9fa"
+      }
+    }
+  },
+  "windows": {
+    "browser": "Chrome 157.0.8103.79",
+    "canvas": [
+      1182,
+      648
+    ],
+    "before_save_sha256": "89a5dc2870d891e052a5d21bb5a64099dfe340346a199ebe6366cd96d3e7461b",
+    "after_save_sha256": "d6238a8f6ccad4ddf15e1085693e5215df88900e5ff53eaf1cbec5a3b8c13e1c",
+    "web_wasm_sha256": "f0670ab7e3bf5d559e55507abebd260e3eb96758521e0a68547c4cb5a8828365"
+  }
+}

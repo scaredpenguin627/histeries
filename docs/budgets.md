@@ -7,6 +7,7 @@ The 900-second fast-gate reference is the 4-vCPU PR runner specified in AGENTS.m
 | Measure | Limit | Fixture |
 | --- | ---: | --- |
 | Fast gate wall time | Under 15 minutes | PR, target runner 4 vCPU |
+| Web job wall time | 30-minute job timeout | PR, hosted Linux runner, release build and Chrome WebGPU acceptance |
 | Scenario editor history | At most 33 snapshots and 16 MiB combined, retaining the current position even if it alone exceeds 16 MiB | Local map and scenario authoring |
 | Planning latency | Per-game p95 at most 250 ms | Fast, both worker configurations |
 | Nightly wall time | 2 hours per seed shard | Nightly |
@@ -18,6 +19,10 @@ The 900-second fast-gate reference is the 4-vCPU PR runner specified in AGENTS.m
 | Increase over turn-100 density | At most 1 byte per entity per elapsed turn | Every memory checkpoint |
 | Excess live bytes over fresh reload | 0 | Every memory checkpoint |
 | Live game allocations after drop | 0 bytes | Long-lived and fresh probe processes |
+
+The Web timeout covers the whole hosted job. Its diagnostic clock starts in the first step before checkout and stops after the static release upload. This includes toolchain setup, system packages, the release build and the Chrome test. Runner allocation, evidence upload and post-job cleanup fall outside that measurement.
+
+The `compare-hashes` job publishes a run-linked Markdown summary and the `browser-parity` artifact. They report each hosted OS's `ci-fast.json` wall time, the Web elapsed time, uncompressed release WebAssembly bytes, Chrome version and WebGPU adapter. The job generates the seed-7 native references and records a byte comparison for the turn-1 game and the scenario before and after applying Woodland. Any difference fails the job. The `web-test` artifact contains the browser saves and raw runtime and size measurements.
 
 The planning sample covers all seats in a round. The gate uses the slower of the single-worker and multi-worker measurements for that round. It also reports maximum latency and actual save sizes for all tiers.
 
