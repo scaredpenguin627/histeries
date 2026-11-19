@@ -1,68 +1,84 @@
 # Histeries architecture
 
-Seed document. AGENTS.md holds the binding rules (section 5 and 6); this file holds the detail they point to. The Phase 0 bootstrap completes it (data-flow diagrams, the determinism and threading model) and keeps it true afterwards. If it disagrees with AGENTS.md, AGENTS.md wins.
+This document describes the Phase 0 boundary. The binding rules are in `AGENTS.md`.
 
-## 1. Crate graph
+## Crate graph
 
+```text
+hex -> rules-core -> ruleset -> sim -> ai -> net -> mcp -> cli -> client
 ```
-hex → rules-core → ruleset → sim → ai → net → mcp → cli → client
-```
 
-A crate may depend only on crates to its left. `cargo xtask layers` enforces this in CI. Nothing below `client` may depend on a windowing or GPU crate, and nothing below `client` may pull in a `-sys` crate or C build script without an ADR (so that `cargo check` for OpenHarmony needs no SDK).
+Each arrow points from a lower layer to the next layer. `xtask layers` checks that no crate depends on a same-or-higher layer. The client is the only layer allowed to add windowing or GPU dependencies.
 
 | Crate | Responsibility |
-|---|---|
-| `hex` | `TileTopology` trait: tile IDs, `neighbors` (degree 5 or 6), `distance`, `ring`, `area`, `line_of_sight`, an embedding for rendering. `FlatHex` (with wrap options) first; `Geodesic` (a Goldberg-polyhedron hex-pentagon sphere) later. The only crate that may know about axial or cube coordinates. No game knowledge. |
-| `rules-core` | Entity types, the modifier language (`effect` + `conditions` + `scope`), yield math. Pure functions. |
-| `ruleset` | Loads TOML rulesets into validated tables and ships the base ruleset (`data/rulesets/base/`). Eras and ages are data with transition hooks. |
-| `sim` | World state in generational arenas, the turn loop, the command registry, the observation API, the event stream, serialization, replay, and the session server. |
-| `ai` | Players. They see the world only through an `Observation`. Three layers: strategic (utility scoring), operational (HTN/GOAP), tactical (MCTS or beam search over joint unit orders). |
-| `net` | Lockstep transport (Phase 4): the same commands and per-turn state hashes over a second transport. |
-| `mcp` | The Model Context Protocol server (`rmcp`; stdio and streamable HTTP) exposing the command registry and observation API with seat-level permissions. |
-| `cli` | The `histeries` binary with subcommands `new`, `step`, `run`, `replay`, `tournament`, `map`, `mcp` and `serve`; ASCII map dump; batch self-play; `editor.*` commands. |
-| `client` | Thin observer and presenter on wgpu + egui + winit, 2D first. Never mutates state; contains no rules logic. The only crate allowed `unsafe`. |
+| --- | --- |
+| `hex` | Topology trait, tile IDs, graph distance, rings, areas, lines of sight, and rendering embeddings. |
+| `rules-core` | Entity identifiers, modifier language, and pure yield functions. |
+| `ruleset` | Validated TOML tables and the base ruleset data. |
+| `sim` | World state, turn loop, command registry, observations, events, serialization, replay, and sessions. |
+| `ai` | Observation-only strategic, operational, and tactical players. |
+| `net` | Lockstep transport over commands and state hashes. |
+| `mcp` | The `rmcp` server exposing commands and observations with seat permissions. |
+| `cli` | `histeries` subcommands, ASCII maps, self-play, and editor commands. |
+| `client` | A thin observer and presenter built on wgpu, egui, and winit. |
 
-## 2. Data flow
+## Data flow
 
-Every state change is a typed `Command` with a stable string ID and a validator; every read is an `Observation` for one seat, with fog of war applied. CLI, MCP, AI, replays, tests and the client all go through those two doors, so replays are command logs plus periodic snapshots, an agent can drive any feature, and a hosted server and peer lockstep are two transports over one model.
+State changes cross one typed command boundary. Reads cross one typed observation boundary with fog-of-war applied.
 
+```text
+CLI / MCP / AI / client -- Command --> sim session server
+CLI / MCP / AI / client <-- Observation + Event -- sim session server
+                                     |
+                                     +-- per-turn hash --> replay and desync diagnostics
 ```
-client / cli / mcp / ai ──Command──▶ session server (sim) ──Event, Observation──▶ every attached seat
-                                         │
-                                         └─ per-turn state hash ──▶ replay log, CI determinism gate, desync reports
-```
 
-## 3. Determinism and threading (to be completed in Phase 0)
+No caller outside `sim` receives a `GameState`. Replays store commands with periodic snapshots so the same registry drives live games, tests, and playback.
 
-- Integers and fixed-point only (format: ADR-0003). Seeded, named RNG streams with a pinned generator (ADR-0002). Sorted-ID iteration; no hash-map iteration in simulation code.
-- AI planning for all players runs in parallel over an immutable snapshot; results are commands applied sequentially in canonical order. Pathfinding, visibility and yield recomputation are pure functions over snapshots (rayon allowed). Thread count changes speed only; CI compares per-turn hashes at 1 vs N threads.
+## Determinism
 
-## 4. Memory model
+The simulation uses integers and the fixed-point representation selected in ADR-0003. Randomness is supplied by named, seeded streams whose algorithm and version are part of the save format. Simulation iteration is ordered by stable generational IDs. Hash maps are not used as an observable iteration source. State hashes are computed after every turn and compared across thread counts and save/load in CI.
 
-Arenas; no reference cycles in `sim`; every cache bounded with explicit eviction. State may legitimately grow with the empire, so the gates are bytes per live entity, a bounded slope after turn 100, and a save → reload-in-fresh-process → compare-heap test.
+## Threading
 
-## 5. Platforms
+Each controller plans from its own seat's immutable observation. Native workers can plan distinct seats in parallel. The referee applies the resulting command streams in ascending seat order and retains the sequence of operations and unit orders within each stream. A tactical order can depend on a tile vacated earlier in the same plan. The tournament checks the session for victory after each dispatch.
 
-Tier A: Linux x86_64, macOS arm64, Windows x86_64 (msvc). Tier B: wasm32 (web client). OpenHarmony: the core crates are `cargo check`ed for `aarch64-unknown-linux-ohos` and `x86_64-unknown-linux-ohos` from Phase 1; a native ArkTS/ArkUI + XComponent shell is a Phase 5+ goal that depends on wgpu Vulkan-on-OHOS support and the community winit-ohos backend.
+## Memory
 
-## 6. Repository layout
+Simulation entities live in bounded generational arenas. Caches declare a capacity and eviction policy. The nightly gate measures bytes per live entity, slope after turn 100, and the retained heap after a save/reload in a fresh process.
 
-```
-Cargo.toml  Cargo.lock  rust-toolchain.toml  rustfmt.toml  clippy.toml  deny.toml  about.toml
-.cargo/config.toml  .config/nextest.toml  .editorconfig  .gitignore  .gitattributes  .vscode/extensions.json
-README.md  LICENSE-MIT  LICENSE-APACHE  THIRD_PARTY_LICENSES.md  CONTRIBUTING.md  CODE_OF_CONDUCT.md
-SECURITY.md  CHANGELOG.md  ATTRIBUTION.md  AGENTS.md
-.agents/skills/{session-start,session-finish,review-change}/SKILL.md
-.codex/{hooks.json,hooks/,agents/}                       optional guardrails (docs/codex-cloud.md)
-.github/workflows/{pr,nightly,weekly,release}.yml  CODEOWNERS  PR and issue templates
-xtask/                                                   layers, ci-fast, soak, memgate, ohos-check
-crates/{hex,rules-core,ruleset,sim,ai,net,mcp,cli,client}
-data/rulesets/base/*.toml  data/LICENSE (CC-BY-4.0)
-assets/  assets/LICENSES.md                              provenance line per asset
-fixtures/oracle/                                         maintainer-supplied, tagged `observed`
-specs/                                                   behavioral specs with provenance tags
-scripts/                                                 codex-cloud-setup.sh, check-env.sh, check_port.py, test_hooks.py, test_check_port.py
-tools/                                                   Python analytics via uv
-docs/{ARCHITECTURE,CLEANROOM,ROADMAP,scorecard,budgets,assets,tooling,codex-cloud,commands}.md
-docs/adr/  docs/sessions/  docs/prompts/
-```
+## Platform and repository boundaries
+
+The lower crates remain pure Rust so OHOS and wasm32 checks do not need a native SDK. The workspace layout, ruleset data, provenance fixtures, assets, specs, ADRs, and session reports are kept in the paths listed in `AGENTS.md` section 14.
+
+## FlatHex Phase 1
+
+The first topology implementation uses stable row-major `TileId` values and keeps its internal axial representation private to `hex`. `FlatHex` supports independent horizontal and vertical wrapping. All returned collections are sorted and deduplicated, line-of-sight returns the endpoint-inclusive topology line, and the default pathfinding heuristic is the integer graph distance.
+
+## Deterministic arithmetic and hashing
+
+`rules-core` uses checked signed fixed-point values with scale 1,000. Named streams use the pinned ChaCha8 algorithm and stable stream labels. `sim` hashes canonical length-prefixed fields with a versioned little-endian FNV-1a algorithm.
+
+## Save and replay format
+
+ADR-0006 defines the custom binary boundary. State and replay documents carry magic bytes and version 4, while command documents carry version 3. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
+
+## Map generation
+
+P1-06 uses `FlatHex` and a named `mapgen` stream to generate terrain, features, river edges, and resources in stable tile-ID order. Editor commands mutate map data only through `sim`, and map serialization rejects incompatible terrain edits and non-canonical tile order.
+
+## Unit simulation
+
+Units are stored in stable `UnitId` order. Movement uses topology neighbors, terrain costs, roads, and enemy ZOC. Combat uses integer strength, deterministic counterattacks, capped healing, one-time promotions, and explicit barbarian ownership. Unit projections in observations contain only the observing seat's own units.
+
+## City simulation
+
+Cities are stored in stable `CityId` order with integer food, housing, production, one queued order, graph-validated districts, and canonical building sets. Founding consumes an owned settler. Turn advancement applies food growth and production in city-ID order. District adjacency is computed through topology neighbors, and produced units use the first sorted free traversable tile adjacent to the city center. Builder units carry three permanent charges, with each road consuming one charge.
+
+## Progression and victories
+
+Technology and civic tables are validated TOML DAGs. Each seat has one selected technology and civic, integer progress, completed node sets, policy slots, active policies, and a victory state. Turn advancement accumulates owned-city science and culture plus active policy bonuses in sorted player order. Science and domination checks run after progression updates, and observations expose only the observing seat's progression state.
+
+## CLI boundary
+
+The CLI uses `Session::dispatch` for every state change and `Observation` or state snapshots for reads. It persists the simulation's versioned state and replay formats, renders maps from stable tile order, and has no independent rules or serialization layer.

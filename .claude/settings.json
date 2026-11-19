@@ -1,0 +1,6 @@
+{
+  "model": "inherit",
+  "review": {
+    "requireIndependentModel": true
+  }
+}

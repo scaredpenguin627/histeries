@@ -1,0 +1,30 @@
+name: Nightly
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+jobs:
+  endurance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+      - name: Exercise heap gate rejection paths
+        if: matrix.seed == 0
+        run: cargo test --locked -p histeries-cli --features heap-profile memgate::tests
+      - run: cargo xtask fixture nightly --seed ${{ matrix.seed }}
+      - name: Compare long-running heap with a fresh reload
+        run: cargo xtask memgate --size large --players 8 --seed ${{ matrix.seed }} --turns 500 | tee target/gates/memory.json
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-seed-${{ matrix.seed }}
+          path: target/gates/

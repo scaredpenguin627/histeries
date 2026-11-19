@@ -1,0 +1,10 @@
+name: task
+about: Track a scoped Histeries task
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Describe the spec and intended behavior.
+    validations:
+      required: true

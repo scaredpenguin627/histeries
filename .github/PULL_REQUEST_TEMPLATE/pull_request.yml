@@ -1,0 +1,11 @@
+name: Pull request
+description: Propose a reviewed change
+title: ""
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Explain the change, tests, and scorecard impact.
+    validations:
+      required: true

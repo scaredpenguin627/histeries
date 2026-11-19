@@ -1,0 +1,57 @@
+name: Fast gate
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  fast:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+          targets: wasm32-unknown-unknown,aarch64-unknown-linux-ohos,x86_64-unknown-linux-ohos
+          components: rustfmt,clippy
+      - name: Install pinned gate tools
+        run: cargo install --locked cargo-nextest@0.9.149 cargo-deny@0.20.2 cargo-about@0.9.2
+      - name: Fast gate
+        timeout-minutes: 15
+        run: cargo xtask ci-fast
+      - name: Attach per-round hashes and measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-${{ runner.os }}
+          path: |
+            target/gates/fast.jsonl
+            target/gates/ci-fast.json
+      - name: Measure paired games against greedy
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo run --locked --release -p histeries-cli --bin histeries -- tournament --opponent greedy --seed 20000 --seeds 32 --turns 500 | tee p1-11-tournament.txt
+          awk '/^games=64 / { for (i=1; i<=NF; ++i) if ($i ~ /^win_bp=/) {split($i,a,"="); passed=(a[2]+0 >= 7500)} } END { exit !passed }' p1-11-tournament.txt
+      - name: Attach tournament outcomes and final hashes
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-11-tournament
+          path: p1-11-tournament.txt
+          if-no-files-found: ignore
+
+  compare-hashes:
+    needs: fast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fast-*
+          path: traces
+      - run: cargo xtask compare-fast traces/fast-Linux/fast.jsonl traces/fast-macOS/fast.jsonl traces/fast-Windows/fast.jsonl
