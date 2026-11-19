@@ -125,6 +125,102 @@ fn stdio_resumes_nonconsecutive_saved_seats_halfway_through_round() {
 }
 
 #[test]
+fn stdio_bots_contest_a_tile_from_the_same_round_snapshot() {
+    use histeries_ai::{GreedyPlayer, Player};
+    use histeries_hex::{FlatHex, TileId};
+    use histeries_rules_core::{PlayerId, UnitId};
+    use histeries_sim::{Command as Order, MapState, Session, UnitKind};
+
+    let seats = [1, 2, 3].map(PlayerId::new);
+    let mut session = Session::with_map(
+        seats,
+        MapState::blank(FlatHex::new(3, 2, false, false).unwrap()),
+    );
+    // Both warriors want tile 1. The human builder sees the contest from tile 4.
+    for (player, kind, tile) in [
+        (seats[0], UnitKind::Builder, 4),
+        (seats[1], UnitKind::Warrior, 0),
+        (seats[2], UnitKind::Warrior, 2),
+    ] {
+        session
+            .dispatch(Order::UnitSpawn {
+                player,
+                unit: UnitId::new(player.index()),
+                kind,
+                tile: TileId::new(tile),
+            })
+            .unwrap();
+    }
+    let target = TileId::new(1);
+    let plan_for = |game: &Session, seat| GreedyPlayer.plan(&game.observe(seat).unwrap()).commands;
+    for seat in &seats[1..] {
+        assert!(plan_for(&session, *seat).contains(&Order::UnitMove {
+            player: *seat,
+            unit: UnitId::new(seat.index()),
+            destination: target,
+        }));
+    }
+    let mut sequential = session.clone();
+    sequential
+        .dispatch(Order::TurnEnd { player: seats[0] })
+        .unwrap();
+    for order in plan_for(&sequential, seats[1]) {
+        sequential.dispatch(order).unwrap();
+    }
+    assert!(
+        plan_for(&sequential, seats[2]).contains(&Order::UnitAttack {
+            player: seats[2],
+            attacker: UnitId::new(3),
+            defender: UnitId::new(2),
+        })
+    );
+
+    let path =
+        std::env::temp_dir().join(format!("histeries-mcp-contest-{}.hst", std::process::id()));
+    for human_already_ended in [false, true] {
+        if human_already_ended {
+            session
+                .dispatch(Order::TurnEnd { player: seats[0] })
+                .unwrap();
+        }
+        std::fs::write(&path, session.state_snapshot().encode()).unwrap();
+        with_stdio(
+            server()
+                .arg("--state")
+                .arg(&path)
+                .env("HISTERIES_MCP_TOKEN", "one"),
+            |call| {
+                let action = if human_already_ended {
+                    "observe"
+                } else {
+                    "advance_turn"
+                };
+                let live = call("tools/call", json!({"name":action,"arguments":{}}));
+                let view = &live["structuredContent"];
+                assert_eq!(view["turn"], 1, "{live}");
+                assert_eq!(view["turn_ended"], false);
+                let units = view["visible_units"].as_array().unwrap();
+                for (id, tile) in [(2, 1), (3, 2)] {
+                    let unit = units.iter().find(|u| u["id"] == id).unwrap();
+                    assert_eq!(unit["tile"], tile);
+                    // Seat 3's move became illegal. Replanning would attack seat 2.
+                    assert_eq!(unit["hp"], UnitKind::Warrior.max_hp());
+                }
+                let replay = call(
+                    "tools/call",
+                    json!({"name":"replay","arguments":{"turn":1}}),
+                );
+                assert_eq!(
+                    replay["structuredContent"]["visible_units"],
+                    view["visible_units"]
+                );
+            },
+        );
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn stdio_replays_a_bot_victory_before_the_round_boundary() {
     use histeries_hex::{FlatHex, TileId};
     use histeries_rules_core::{PlayerId, UnitId};

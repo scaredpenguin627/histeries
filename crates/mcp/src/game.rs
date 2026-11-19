@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 
-use histeries_ai::{GreedyPlayer, Player};
+use histeries_ai::{GreedyPlayer, Player, plan_seats};
 use histeries_rules_core::PlayerId;
 use histeries_sim::{
     Command, MatchObservation, MatchView, Observation, ProductionItem, ReplayLog, Session,
@@ -161,23 +161,36 @@ impl Game {
     }
 
     fn advance_bots(&mut self) -> Result<(), String> {
+        if self.bots.is_empty() || self.session.winner().is_some() {
+            return Ok(());
+        }
         let round = self.session.turn();
-        for seat in self.bots.clone() {
+        let mut controllers = vec![GreedyPlayer; self.bots.len()];
+        let mut seats: Vec<(&mut (dyn Player + Send), Observation)> = Vec::new();
+        for (&seat, controller) in self.bots.iter().zip(&mut controllers) {
+            if !self.session.has_ended_turn(seat) {
+                let view = self.session.observe(seat).map_err(|e| e.to_string())?;
+                seats.push((controller, view));
+            }
+        }
+        // plan_seats sorts the seat/observation pairs and returns the plans in that order.
+        let plans = plan_seats(&mut seats, self.bots.len());
+        debug_assert_eq!(seats.len(), plans.len());
+        for ((_, view), plan) in seats.into_iter().zip(plans) {
             if self.session.turn() != round {
                 break;
             }
-            if self.session.has_ended_turn(seat) || self.session.winner().is_some() {
+            if self.session.has_ended_turn(view.seat()) {
                 continue;
             }
-            let observation = self.session.observe(seat).map_err(|e| e.to_string())?;
-            for order in GreedyPlayer.plan(&observation).commands {
+            for order in plan.commands {
                 if self.session.winner().is_some() {
-                    break;
+                    return Ok(());
                 }
                 // Earlier orders may have invalidated the remaining plan. A rejected
                 // tactical order never prevents the opponent handing the turn back.
                 let ending = matches!(order, Command::TurnEnd { .. });
-                let applied = self.apply(seat, order);
+                let applied = self.apply(view.seat(), order);
                 if ending {
                     applied?;
                 }

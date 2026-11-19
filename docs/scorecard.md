@@ -4,6 +4,8 @@ The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-1
 
 ## Phase 2 measurements · 2026-11-19
 
+Three-seat stdio planning matched the expected unit positions and hit points on live advancement, save/resume and replay. [Regression results](sessions/2026-11-19-stdio-bot-snapshot.md)
+
 The current controller played both seats on each of 32 reserved maps (seeds 40000–40031). The sign test treats a map as one paired observation and excludes tied maps. Elo is the smoothed rating difference within each matchup. The eight-worker repeat reproduced each of the 192 single-worker game rows, including its winner, length, conflict count and final hash. All 384 games finished without a crash, error or draw. [Individual games and commands](sessions/2026-11-19-phase2-tournament.txt)
 
 | Opponent | Wins / games | Win rate | Relative Elo | One-sided paired p |

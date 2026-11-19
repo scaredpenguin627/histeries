@@ -237,6 +237,7 @@ fn finish(
 
 /// Plans one immutable round in ascending seat order, with at most `workers` threads.
 /// Callers supply one controller and one observation per distinct seat.
+/// Sorts the input slice in place and returns one plan per seat in the same order.
 pub fn plan_seats(
     seats: &mut [(&mut (dyn Player + Send), Observation)],
     workers: usize,
