@@ -1143,9 +1143,10 @@ impl SimulationState {
             {
                 return Err(SerializationError::InvalidCityState);
             }
-            if city
-                .production
-                .is_some_and(|item| city.production_stored >= item.cost())
+            // A completed unit or district can wait in the queue for a free tile.
+            // The blocking unit may also have moved since the last turn advance.
+            if let Some(item @ ProductionItem::Building(_)) = city.production
+                && city.production_stored >= item.cost()
             {
                 return Err(SerializationError::InvalidCityState);
             }
@@ -2549,6 +2550,11 @@ impl ReplayLog {
         }
     }
 
+    /// Returns the starting snapshot for incremental replay verification.
+    pub fn initial_state(&self) -> &SimulationState {
+        &self.initial
+    }
+
     /// Returns the recorded commands.
     pub fn commands(&self) -> &[Command] {
         &self.commands
@@ -2641,6 +2647,11 @@ impl Session {
     /// Returns a clone of the canonical state snapshot.
     pub fn state_snapshot(&self) -> SimulationState {
         self.state.clone()
+    }
+
+    /// Returns the number of complete rounds committed by this session.
+    pub const fn turn(&self) -> u32 {
+        self.state.turn()
     }
 
     /// Returns the canonical command registry.
@@ -2829,6 +2840,23 @@ impl Session {
     /// Returns the current replay log.
     pub fn replay(&self) -> &ReplayLog {
         &self.replay
+    }
+
+    /// Closes the current replay segment and starts another at the current state.
+    /// Consumers can persist each returned segment independently of the live session.
+    pub fn take_replay_segment(&mut self) -> ReplayLog {
+        std::mem::replace(&mut self.replay, ReplayLog::new(self.state.clone()))
+    }
+
+    /// Counts tiles, seats, units and cities in the canonical world, once each.
+    pub fn live_entity_count(&self) -> usize {
+        self.state
+            .map
+            .as_ref()
+            .map_or(0, |map| map.topology().tile_count())
+            + self.state.markers.len()
+            + self.state.units.len()
+            + self.state.cities.len()
     }
 
     fn visible_tiles(&self, seat: PlayerId) -> BTreeSet<TileId> {
@@ -3701,6 +3729,151 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.state_hash(), second.state_hash());
         assert!(STATE_HASH_ALGORITHM.contains("little-endian"));
+    }
+
+    #[test]
+    fn fully_funded_city_orders_survive_save_load_until_the_site_is_free() {
+        let player = PlayerId::new(1);
+        let rival = PlayerId::new(2);
+        let site = super::TileId::new(1);
+        for item in [
+            ProductionItem::Unit(UnitKind::Warrior),
+            ProductionItem::District {
+                kind: DistrictKind::Campus,
+                tile: site,
+            },
+        ] {
+            let map = MapState::blank(FlatHex::new(4, 1, false, false).unwrap());
+            let mut session = Session::with_map([player, rival], map);
+            for (seat, pos) in [(player, 0), (rival, 3)] {
+                session
+                    .dispatch(Command::UnitSpawn {
+                        player: seat,
+                        unit: UnitId::new(pos),
+                        kind: UnitKind::Settler,
+                        tile: super::TileId::new(pos),
+                    })
+                    .unwrap();
+                session
+                    .dispatch(Command::CityFound {
+                        player: seat,
+                        city: CityId::new(pos),
+                        unit: UnitId::new(pos),
+                    })
+                    .unwrap();
+            }
+            session
+                .dispatch(Command::CitySetProduction {
+                    player,
+                    city: CityId::new(0),
+                    item,
+                })
+                .unwrap();
+            session
+                .dispatch(Command::UnitSpawn {
+                    player,
+                    unit: UnitId::new(1),
+                    kind: UnitKind::Warrior,
+                    tile: site,
+                })
+                .unwrap();
+            for _ in 0..item.cost() {
+                for seat in [player, rival] {
+                    session.dispatch(Command::TurnEnd { player: seat }).unwrap();
+                }
+            }
+            let observation = session.observe(player).unwrap();
+            let city = &observation.cities()[0];
+            assert_eq!(city.production, Some(item));
+            assert!(city.production_stored >= item.cost());
+            // The order is still waiting even after the obstruction moves away.
+            session
+                .dispatch(Command::UnitMove {
+                    player,
+                    unit: UnitId::new(1),
+                    destination: super::TileId::new(2),
+                })
+                .unwrap();
+            let snapshot = session.state_snapshot();
+            let mut restored =
+                Session::from_state(SimulationState::decode(&snapshot.encode()).unwrap());
+            for game in [&mut session, &mut restored] {
+                for seat in [player, rival] {
+                    game.dispatch(Command::TurnEnd { player: seat }).unwrap();
+                }
+                assert!(
+                    game.observe(player).unwrap().cities()[0]
+                        .production
+                        .is_none()
+                );
+            }
+            assert_eq!(session.state_hash(), restored.state_hash());
+        }
+    }
+
+    #[test]
+    fn serialized_mid_round_checkpoint_preserves_each_replayed_round() {
+        let seats = [PlayerId::new(9), PlayerId::new(2), PlayerId::new(6)];
+        let mut session = Session::new(seats);
+        session
+            .dispatch(Command::TurnEnd { player: seats[0] })
+            .unwrap();
+        let checkpoint = session.state_snapshot();
+        let mut restored =
+            Session::from_state(SimulationState::decode(&checkpoint.encode()).unwrap());
+        let mut hashes = Vec::new();
+        for (idx, seat) in seats.into_iter().cycle().skip(1).take(11).enumerate() {
+            let edit = Command::EditorSetMarker {
+                player: seat,
+                value: idx as i64,
+            };
+            let end = Command::TurnEnd { player: seat };
+            let last = session.turn();
+            for command in [edit, end] {
+                session.dispatch(command.clone()).unwrap();
+                restored.dispatch(command).unwrap();
+            }
+            assert_eq!(session.state_hash(), restored.state_hash());
+            if last != session.turn() {
+                hashes.push(session.state_hash());
+            }
+        }
+        let log = ReplayLog::decode(&restored.replay().encode()).unwrap();
+        assert_eq!(log.initial_state(), &checkpoint);
+        let mut playback = Session::from_state(log.initial_state().clone());
+        let mut replayed = Vec::new();
+        for command in log.commands() {
+            let last = playback.turn();
+            playback.dispatch(command.clone()).unwrap();
+            if last != playback.turn() {
+                replayed.push(playback.state_hash());
+            }
+        }
+        assert_eq!(hashes.len(), 4);
+        assert_eq!(replayed, hashes);
+        assert_eq!(log.replay().unwrap().state_hash(), session.state_hash());
+    }
+
+    #[test]
+    fn closed_replay_segments_preserve_commands_and_event_sequence() {
+        let player = PlayerId::new(1);
+        let mut session = Session::with_map(
+            [player],
+            MapState::blank(FlatHex::new(3, 3, false, false).unwrap()),
+        );
+        assert_eq!(session.live_entity_count(), 10);
+        session.dispatch(Command::TurnEnd { player }).unwrap();
+        let first = session.take_replay_segment();
+        let boundary = session.state_hash();
+        assert_eq!(first.replay().unwrap().state_hash(), boundary);
+        assert_eq!(first.commands().len(), 1);
+        assert!(session.replay().commands().is_empty());
+        assert_eq!(session.drain_events().len(), 1);
+        session.dispatch(Command::TurnEnd { player }).unwrap();
+        let next = session.take_replay_segment();
+        assert_eq!(session.events()[0].sequence(), 1);
+        assert_eq!(next.initial_state().state_hash(), boundary);
+        assert_eq!(next.replay().unwrap().state_hash(), session.state_hash());
     }
 
     #[test]

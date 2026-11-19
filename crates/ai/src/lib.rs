@@ -69,6 +69,11 @@ pub struct ThreeLayerPlayer {
 }
 
 impl ThreeLayerPlayer {
+    /// Returns the last seat and objective for a self-play checkpoint.
+    pub fn incumbent(&self) -> Option<(PlayerId, VictoryObjective)> {
+        self.incumbent
+    }
+
     /// Restores the only controller memory needed between turns.
     pub fn resume(seat: PlayerId, objective: VictoryObjective) -> Self {
         Self {

@@ -14,6 +14,56 @@ CI fills the measured values. A blank value means the gate has not run yet.
 | Panics and crashes |  |  |  | Self-play count |
 | Fast-gate wall time |  |  |  | Target under 15 minutes |
 
+## P1-12 local measurements · 2026-11-19
+
+On Windows x86-64 GNU (Rust 1.100.0, Intel i5-8250U, eight logical CPUs), all 1,000 Small-map games reached a science victory with zero panics. The uninterrupted soak covered 1,000 distinct SplitMix64 seeds at indices 0–999, with 143 games each at two through seven seats and 142 at eight seats. All 52,706 round hashes, winners and contact-order counts matched two earlier runs. One ran uninterrupted. The other was interrupted after 968 completed games and resumed for the final 32 indices.
+
+| Local measurement | Fast · 2/4 seats, Small | Nightly · 8 seats, Large | Weekly · 16 seats, Huge | Normal soak · 2–8 seats, Small |
+| --- | ---: | ---: | ---: | ---: |
+| Completed fixtures or normal games | 6 | 5 | 2 | 1,000 |
+| Round hashes matched for 1 vs 8 workers, save/load and replay (each) | 1,200 | 2,500 | 2,000 | 52,706 |
+| Round hashes matched after resuming a checkpoint | 432 | 1,220 | 976 | 20,418 |
+| Explicit orders for military units in contact | 601 | 11,024 | 18,775 | 159,964 |
+| Worst per-game planning p95 (µs) | 31,320 | 562,243 | 71,908 | 1,334,553 |
+| Maximum planning latency (µs) | 71,933 | 2,762,043 | 453,964 | 1,802,929 |
+| Largest encoded world save (bytes) | 6,141 | 18,493 | 61,707 | 8,175 |
+| Batch wall time (s) | 7.522 | 190.698 | 491.113 | 235.317 |
+
+Fast ran 200 rounds per fixture, nightly ran 500 and weekly ran 1,000. These endurance scenarios reserve one technology-tree leaf so that the simulation can reach the measurement window. The normal soak used the full victory rules and a 500-round limit. Every contact observed on a planning turn received an explicit order. Each latency sample covers all seats and takes the slower of the one-worker and eight-worker plans.
+
+| Local heap measurement | Nightly | Weekly |
+| --- | ---: | ---: |
+| Checkpoints compared with a fresh process | 85 | 74 |
+| Peak live bytes per entity | 300.008 | 251.745 |
+| Maximum density increase after turn 100 (bytes/entity/turn) | 0.0 | 0.0 |
+| Maximum excess live bytes over fresh reload | 0 | 0 |
+| Live bytes after game drop | 0 | 0 |
+
+For each weekly seed, the first process wrote a checkpoint at round 900. A second process loaded a copy from a different directory and completed the last 100 rounds. Each resumed trace matched its uninterrupted counterpart on all 1,000 round hashes, with the same final hash as its heap probe. The weekly column reports the uninterrupted run. Across the two recovered runs, the slowest planning round took 1,379,516 µs (2,000,000 µs limit) and the largest save occupied 61,707 bytes (40 MiB limit).
+
+All seven heap-probe final hashes matched the corresponding endurance fixture. Sampling began at turn 100 and continued every 25 turns. The complete local fast gate took **83.735 s** against a 900 s budget. A second local fast run matched all 1,200 round hashes. Hosted cross-platform comparisons and the 4-vCPU timing await CI.
+
+The [evidence archive](sessions/2026-11-19-phase1-selfplay-evidence.zip) contains the uninterrupted soak (`p112-publish.jsonl`), all three endurance traces (`fast.jsonl`, `p112-nightly.jsonl`, `p112-weekly-final.jsonl`), the weekly round-900 receipts (`p112-weekly-stop-*.json`) and recovered full traces (`p112-weekly-recovered-*.jsonl`), the independent local fast trace (`p112-comparator-fast.jsonl`), the five `memory-*.json` and two `weekly-memory-*.json` heap reports, the fast-gate result (`ci-fast.json`) and an aggregate (`summary.json`). Each trace includes the per-round hashes and its batch summary. Archive SHA-256 is `56389aca56eddfe1f449c42132c12816b6273e6c59c00b3c5ccdddaec0c07a64`.
+
+Reproduce from the repository root with the pinned Rust toolchain and gate tools. The following commands use PowerShell.
+
+```powershell
+cargo xtask ci-fast
+cargo xtask fixture fast --output target/gates/p112-comparator-fast.jsonl
+cargo xtask compare-fast target/gates/fast.jsonl target/gates/p112-comparator-fast.jsonl
+cargo xtask soak --games 1000 --jobs 2 --seed 0 --output target/gates/p112-publish.jsonl
+cargo xtask fixture nightly --output target/gates/p112-nightly.jsonl
+cargo xtask fixture weekly --output target/gates/p112-weekly-final.jsonl
+0..1 | ForEach-Object {
+    $checkpoint = "target/weekly-$($_)-$([guid]::NewGuid())"
+    cargo xtask fixture weekly --seed $_ --checkpoint-dir $checkpoint --stop-after-round 900
+    Copy-Item -Recurse -LiteralPath $checkpoint -Destination "$checkpoint-recovery"
+    cargo xtask fixture weekly --seed $_ --checkpoint-dir "$checkpoint-recovery" --output "target/gates/p112-weekly-recovered-$_.jsonl"
+}
+0..4 | ForEach-Object { cargo xtask memgate --size large --players 8 --seed $_ --turns 500 }
+0..1 | ForEach-Object { cargo xtask memgate --size huge --players 16 --seed $_ --turns 1000 }
+```
+
 ## Current implementation evidence
 
 P1-01 supplies the topology API, wrapping behavior, deterministic ordering, integer embedding, A* heuristic, and seven unit tests. The fast gate currently runs ten tests, with CI remaining authoritative for published scorecard values.

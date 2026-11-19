@@ -1,9 +1,14 @@
 //! Workspace maintenance commands for Histeries.
 
+#![forbid(unsafe_code)]
+
+mod soak;
+
 use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Command, ExitCode},
+    time::{Duration, Instant},
 };
 
 const ORDER: &[&str] = &[
@@ -121,7 +126,7 @@ fn check_layers(root: &Path) -> Result<(), String> {
 }
 
 fn ci_fast(root: &Path) -> bool {
-    let strict = env::var_os("CI").is_some();
+    let start = Instant::now();
     let mut ok = run("cargo", &["xtask", "layers"], root);
     ok &= run("cargo", &["fmt", "--all", "--", "--check"], root);
     ok &= run(
@@ -130,76 +135,46 @@ fn ci_fast(root: &Path) -> bool {
             "clippy",
             "--workspace",
             "--all-targets",
+            "--all-features",
             "--",
             "-D",
             "warnings",
         ],
         root,
     );
-    if command_available("cargo-deny", &["--version"], root) {
-        let deny_ok = run("cargo-deny", &["check"], root);
-        if deny_ok || strict {
-            ok &= deny_ok;
-        } else {
-            println!(
-                "cargo-deny advisory refresh unavailable locally; running cached bans, licenses, and sources checks"
-            );
-            ok &= run(
-                "cargo-deny",
-                &["check", "bans", "licenses", "sources"],
-                root,
-            );
-        }
-    } else if command_available("cargo", &["deny", "--version"], root) {
-        ok &= run("cargo", &["deny", "check"], root);
-    } else {
-        println!("cargo-deny unavailable; deny.toml is present and the CI job will run it");
-        ok &= !strict;
+    ok &= run("cargo", &["deny", "check"], root);
+    ok &= run("cargo", &["nextest", "run", "--workspace"], root);
+    ok &= ohos_check(root);
+    ok &= run(
+        "cargo",
+        &["check", "--workspace", "--target", "wasm32-unknown-unknown"],
+        root,
+    );
+    if let Err(error) = soak::run(root, "fixture", &["fast".into()]) {
+        eprintln!("{error}");
+        ok = false;
     }
-    if command_available("cargo-nextest", &["nextest", "--version"], root) {
-        ok &= run("cargo-nextest", &["nextest", "run", "--workspace"], root);
-    } else if command_available("cargo", &["nextest", "--version"], root) {
-        ok &= run("cargo", &["nextest", "run", "--workspace"], root);
-    } else {
-        ok &= run("cargo", &["test", "--workspace"], root);
-        ok &= !strict;
-    }
-    for target in [
-        "wasm32-unknown-unknown",
-        "aarch64-unknown-linux-ohos",
-        "x86_64-unknown-linux-ohos",
-    ] {
-        if target_installed(target, root) {
-            ok &= run("cargo", &["check", "--workspace", "--target", target], root);
-        } else {
-            println!("target {target} unavailable locally; the CI job will check it");
-            ok &= !strict;
-        }
+    let elapsed = start.elapsed();
+    ok &= elapsed < Duration::from_secs(15 * 60);
+    let report =
+        serde_json::json!({"passed": ok, "wall_ms": elapsed.as_millis(), "budget_ms": 900000});
+    println!("ci-fast {report}");
+    let dir = root.join("target/gates");
+    if let Err(error) = fs::create_dir_all(&dir)
+        .and_then(|_| fs::write(dir.join("ci-fast.json"), format!("{report}\n")))
+    {
+        eprintln!("could not write ci-fast measurements: {error}");
+        return false;
     }
     ok
 }
 
-fn command_available(program: &str, args: &[&str], root: &Path) -> bool {
-    Command::new(program)
-        .args(args)
-        .current_dir(root)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
-fn target_installed(target: &str, root: &Path) -> bool {
-    command_available("rustup", &["target", "list", "--installed"], root)
-        && Command::new("rustup")
-            .args(["target", "list", "--installed"])
-            .current_dir(root)
-            .output()
-            .map(|output| {
-                String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .any(|line| line.trim() == target)
-            })
-            .unwrap_or(false)
+fn ohos_check(root: &Path) -> bool {
+    let mut ok = true;
+    for target in ["aarch64-unknown-linux-ohos", "x86_64-unknown-linux-ohos"] {
+        ok &= run("cargo", &["check", "--workspace", "--target", target], root);
+    }
+    ok
 }
 
 fn main() -> ExitCode {
@@ -222,16 +197,62 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         }
-        Some(command @ ("soak" | "memgate" | "ohos-check")) => {
-            println!("{command} is reserved for the Phase 1 gate implementation");
-            ExitCode::SUCCESS
+        Some(command @ ("soak" | "fixture" | "compare-fast")) => {
+            let args = env::args().skip(2).collect::<Vec<_>>();
+            let result = if command == "compare-fast" {
+                soak::compare_fast(&args)
+            } else {
+                soak::run(&root, command, &args)
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("{error}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Some("memgate") => {
+            let status = Command::new("cargo")
+                .current_dir(root)
+                .args([
+                    "run",
+                    "--locked",
+                    "--release",
+                    "-p",
+                    "histeries-cli",
+                    "--features",
+                    "heap-profile",
+                    "--bin",
+                    "histeries",
+                    "--",
+                    "memgate",
+                ])
+                .args(env::args().skip(2))
+                .status();
+            match status {
+                Ok(code) if code.success() => ExitCode::SUCCESS,
+                result => {
+                    eprintln!("memory gate failed: {result:?}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Some("ohos-check") => {
+            if ohos_check(&root) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
         Some(command) => {
             eprintln!("unknown xtask command: {command}");
             ExitCode::FAILURE
         }
         None => {
-            eprintln!("usage: cargo xtask <layers|ci-fast|soak|memgate|ohos-check>");
+            eprintln!(
+                "usage: cargo xtask <layers|ci-fast|fixture fast|nightly|weekly|soak|memgate|ohos-check>"
+            );
             ExitCode::FAILURE
         }
     }

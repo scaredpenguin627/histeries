@@ -20,3 +20,4 @@ All notable changes are recorded here.
 - Added 25-node technology and civic trees, research progress, policy slots, and domination and science victory checks for P1-09.
 - Added deterministic CLI `new`, `step`, `run`, `replay`, `map`, and scenario-editor commands for P1-10.
 - Added strategic victory selection with hysteresis, multi-turn city and research planning, joint tactical beam search, and a paired tournament against greedy and seeded random players.
+- Added 2–8 seat self-play verification of every round across worker counts, binary replay and save/load, with checkpointed controller continuation, native heap measurements and planning-time budgets. Fixed loading funded production orders waiting for an available tile.
