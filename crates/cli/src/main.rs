@@ -2,6 +2,18 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(all(
+    feature = "heap-profile",
+    any(
+        target_os = "windows",
+        target_os = "macos",
+        all(target_os = "linux", not(target_env = "ohos"))
+    )
+))]
+mod memgate;
+mod selfplay;
+mod tournament;
+
 use std::{env, fs};
 
 use histeries_hex::{FlatHex, TileId};
@@ -27,6 +39,17 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "step" => command_step(&args[1..]),
         "run" => command_run(&args[1..]),
         "replay" => command_replay(&args[1..]),
+        "tournament" => tournament::run(&args[1..]),
+        "selfplay" => selfplay::run(&args[1..]),
+        #[cfg(all(
+            feature = "heap-profile",
+            any(
+                target_os = "windows",
+                target_os = "macos",
+                all(target_os = "linux", not(target_env = "ohos"))
+            )
+        ))]
+        "memgate" => memgate::run(&args[1..]),
         "map" => command_map(&args[1..]),
         "editor" | "scenario-editor" => command_editor(&args[1..]),
         "help" | "--help" | "-h" => {
@@ -118,6 +141,7 @@ fn command_run(args: &[String]) -> Result<(), String> {
                 .dispatch(Command::TurnEnd { player: *player })
                 .map_err(|error| error.to_string())?;
         }
+        release_round_history(&mut session, replay_output.is_some());
     }
     let snapshot = session.state_snapshot();
     write_state(&output, &snapshot)?;
@@ -128,6 +152,15 @@ fn command_run(args: &[String]) -> Result<(), String> {
         session.state_hash().value()
     );
     Ok(())
+}
+
+const REPLAY_SEGMENT_TURNS: u32 = 25;
+
+fn release_round_history(session: &mut Session, keep_replay: bool) {
+    drop(session.drain_events());
+    if !keep_replay && session.turn().is_multiple_of(REPLAY_SEGMENT_TURNS) {
+        drop(session.take_replay_segment());
+    }
 }
 
 fn command_replay(args: &[String]) -> Result<(), String> {
@@ -390,11 +423,37 @@ fn seed_bytes(seed: u64) -> [u8; 32] {
 }
 
 fn usage() -> String {
-    "usage: histeries <new|step|run|replay|map|editor> ...\n  new [--players N] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  map STATE\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
+    "usage: histeries <new|step|run|replay|tournament|selfplay|map|editor> ...\n  new [--players N] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  map STATE\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn replay_output_preserves_archives_across_housekeeping_boundaries() {
+        let seat = super::PlayerId::new(1);
+        let mut archive = super::Session::new([seat]);
+        let mut live = archive.clone();
+        for _ in 0..=super::REPLAY_SEGMENT_TURNS {
+            for (session, keep_replay) in [(&mut archive, true), (&mut live, false)] {
+                session
+                    .dispatch(super::Command::TurnEnd { player: seat })
+                    .unwrap();
+                super::release_round_history(session, keep_replay);
+                assert!(session.events().is_empty());
+            }
+        }
+        assert_eq!(archive.state_hash(), live.state_hash());
+        assert_eq!(live.replay().commands().len(), 1);
+        assert_eq!(
+            archive.replay().commands().len(),
+            super::REPLAY_SEGMENT_TURNS as usize + 1
+        );
+        assert_eq!(
+            archive.replay().replay().unwrap().state_hash(),
+            live.state_hash()
+        );
+    }
+
     use std::{env, fs, path::PathBuf};
 
     use super::{map_ascii, parse_feature, parse_terrain, run, seed_bytes, terrain_glyph};

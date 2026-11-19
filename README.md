@@ -27,3 +27,8 @@ histeries editor state.hst set-terrain --player 1 --tile 4 --value plains
 ```
 
 Use `--replay-output PATH` with `new`, `step`, `run`, or `editor` to write a replay log.
+
+Run `histeries tournament --opponent greedy --seed 0 --seeds 32 --turns 500`
+to play both seats on each of 32 generated maps. Use `--opponent random` for
+the seeded random baseline. The report includes the winner, victory type and
+final state hash for each game, along with aggregate win rate and planning time.

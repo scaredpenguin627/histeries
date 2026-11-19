@@ -1,13 +1,10 @@
 //! Deterministic city, district, building, and production data.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::OnceLock,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use histeries_hex::{TileId, TileTopology};
 use histeries_rules_core::CityId;
-use histeries_ruleset::Ruleset;
+pub(crate) use histeries_ruleset::base_ruleset;
 
 use crate::unit::UnitKind;
 
@@ -417,14 +414,6 @@ impl City {
     pub(crate) fn insert_building(&mut self, kind: BuildingKind) {
         self.buildings.insert(kind);
     }
-}
-
-pub(crate) fn base_ruleset() -> &'static Ruleset {
-    static RULESET: OnceLock<Ruleset> = OnceLock::new();
-    RULESET.get_or_init(|| {
-        Ruleset::from_toml(include_str!("../../../data/rulesets/base/base.toml"))
-            .expect("base ruleset must remain valid")
-    })
 }
 
 #[cfg(test)]

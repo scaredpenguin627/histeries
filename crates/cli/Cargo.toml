@@ -8,10 +8,19 @@ rust-version.workspace = true
 [lints]
 workspace = true
 
+[features]
+heap-profile = ["dep:dhat"]
+
 [dependencies]
+histeries-ai = { path = "../ai" }
 histeries-hex = { path = "../hex" }
 histeries-rules-core = { path = "../rules-core" }
 histeries-sim = { path = "../sim" }
+serde.workspace = true
+serde_json = "=1.0.154"
+
+[target.'cfg(any(all(target_os = "linux", not(target_env = "ohos")), target_os = "macos", target_os = "windows"))'.dependencies]
+dhat = { version = "=0.3.3", optional = true }
 
 [[bin]]
 name = "histeries"

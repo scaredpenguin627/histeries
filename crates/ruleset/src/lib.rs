@@ -14,6 +14,15 @@ use serde::Deserialize;
 
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 
+/// The validated bundled rules shared by the simulation and its controllers.
+pub fn base_ruleset() -> &'static Ruleset {
+    static BASE: std::sync::OnceLock<Ruleset> = std::sync::OnceLock::new();
+    BASE.get_or_init(|| {
+        Ruleset::from_toml(include_str!("../../../data/rulesets/base/base.toml"))
+            .expect("base ruleset must remain valid")
+    })
+}
+
 /// A validated ruleset ready for simulation use.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ruleset {
