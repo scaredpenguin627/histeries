@@ -38,7 +38,7 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 ## Phase 2 — AI depth and MCP
 
 - [x] Deepen all three AI layers and compare paired tournament results against random, greedy and the frozen Phase 1 controller using Elo and an exact significance test
-- [x] Verify the complete MCP server, both transports and seat-scoped live and historical observations
+- [x] Verify the complete MCP server, both transports, seat-scoped live and historical observations, and shared-snapshot planning for stdio opponents
 - [x] Replay two complete external-agent games through a fresh MCP subprocess in the acceptance suite
 - [x] Publish independently derived fixture comparisons, record external observation coverage and enforce the checks in CI
 
