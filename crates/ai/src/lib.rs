@@ -7,6 +7,8 @@ use histeries_ruleset::base_ruleset;
 use histeries_sim::{BuildingKind, Command, Observation, ProductionItem};
 
 pub mod operational;
+mod opponents;
+pub use opponents::advance_greedy_opponents;
 mod settlement;
 pub mod strategic;
 pub mod tactical;

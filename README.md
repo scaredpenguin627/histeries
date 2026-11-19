@@ -4,6 +4,18 @@ Histeries is an open-source, clean-room, turn-based 4X strategy game built in Ru
 
 The headless game supports seeded continents, military and civilian units, cities, research, policies, AI opponents and agent-controlled seats. Read `AGENTS.md` for the project contract and `docs/ROADMAP.md` for the current task list.
 
+## Desktop game
+
+Run `cargo run --locked -p histeries-client` to start a two-seat game. Click a hex to inspect it, select an order and click its target. Drag the map to pan and scroll or pinch to zoom. The computer plans its turn when you end yours. The Game menu starts a new game or opens and saves a standard simulation save.
+
+```text
+cargo run --locked -p histeries-client -- --seed 7
+cargo run --locked -p histeries-client -- --load campaign.hst
+cargo run --locked -p histeries-client -- --seed 7 --capture map.png
+```
+
+The capture command saves a PNG from the rendered window and exits. The desktop client requires a working wgpu graphics backend. Linux X11 sessions also require the xkbcommon X11 runtime (`libxkbcommon-x11-0` on Ubuntu).
+
 ## Local checks
 
 ```text

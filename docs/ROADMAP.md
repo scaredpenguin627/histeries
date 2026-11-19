@@ -44,7 +44,10 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 
 ## Phase 3 — 2D client
 
-- [ ] Add the wgpu, egui, and winit presenter, GUI editor, mod-manager UI, WASM plugin ABI, and web build
+- [x] P3-01 Ship a playable native 2D client using wgpu, egui and winit
+- [ ] P3-02 Add the GUI map and scenario editor
+- [ ] P3-03 Add the mod manager and a versioned, fuel-metered wasmi plugin ABI
+- [ ] P3-04 Build, serve and verify the web client
 
 ## Phase 4 — Lockstep multiplayer
 

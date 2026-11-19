@@ -13,7 +13,11 @@ use histeries_rules_core::{CityId, PlayerId, UnitId};
 pub mod city;
 #[cfg(test)]
 mod conquest_tests;
+mod frontier;
+pub use frontier::{frontier, frontier_duel};
 pub mod map;
+mod match_host;
+pub use match_host::MatchHost;
 #[cfg(test)]
 mod production_tests;
 pub mod progression;
@@ -371,6 +375,37 @@ impl Command {
             Self::ResearchCivic { .. } => "research.civic",
             Self::PolicyAdopt { .. } => "policy.adopt",
             Self::PolicyRemove { .. } => "policy.remove",
+        }
+    }
+
+    /// Returns the issuing seat, if the command belongs to a player.
+    pub const fn issuer(&self) -> Option<PlayerId> {
+        match self {
+            Self::TurnEnd { player, .. }
+            | Self::EditorSetMarker { player, .. }
+            | Self::EditorSetTerrain { player, .. }
+            | Self::EditorSetFeature { player, .. }
+            | Self::EditorSetRiver { player, .. }
+            | Self::EditorSetResource { player, .. }
+            | Self::UnitMove { player, .. }
+            | Self::UnitBuildRoad { player, .. }
+            | Self::UnitAttack { player, .. }
+            | Self::UnitCaptureCity { player, .. }
+            | Self::UnitHeal { player, .. }
+            | Self::UnitHold { player, .. }
+            | Self::UnitPromote { player, .. }
+            | Self::UnitSpawn { player, .. }
+            | Self::CityFound { player, .. }
+            | Self::CitySettle { player, .. }
+            | Self::CitySetProduction { player, .. }
+            | Self::CityEnqueueProduction { player, .. }
+            | Self::CityBuildDistrict { player, .. }
+            | Self::CityBuildBuilding { player, .. }
+            | Self::ResearchTechnology { player, .. }
+            | Self::ResearchCivic { player, .. }
+            | Self::PolicyAdopt { player, .. }
+            | Self::PolicyRemove { player, .. } => Some(*player),
+            Self::BarbarianSpawn { .. } => None,
         }
     }
 
@@ -2525,6 +2560,9 @@ pub struct ProgressObservation {
 /// Fog-safe tile data available to an observing seat.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct VisibleTileObservation {
+    /// Center in topology-supplied integer display units.
+    #[serde(skip)]
+    pub embedding: histeries_hex::Embedding,
     /// Stable tile ID.
     pub tile: TileId,
     /// Terrain category.

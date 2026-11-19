@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added a native 2D game client with a fog-filtered hex map, seat orders, computer opponents and interoperable saves.
+
 - Fixed multi-bot stdio turns so every pending bot plans from the same round state, including when resuming a saved game.
 
 - Deepened strategic evaluation, city project planning and joint tactical orders. Added paired tournaments against the frozen Phase 1 AI, two replayable external-agent MCP games and a fixture-driven parity scorecard.
