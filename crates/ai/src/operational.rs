@@ -87,15 +87,21 @@ fn economy(
         .iter()
         .filter(|unit| unit.kind.is_military())
         .count();
-    military += observation.cities().iter().filter(|city| matches!(city.production, Some(ProductionItem::Unit(kind)) if kind.is_military())).count();
+    military += observation
+        .cities()
+        .iter()
+        .flat_map(|city| city.production.iter().chain(&city.waiting))
+        .filter(|item| matches!(item, ProductionItem::Unit(kind) if kind.is_military()))
+        .count();
     let hostiles = observation
         .visible_units()
         .iter()
         .filter(|unit| unit.owner != Some(player) && unit.kind.is_military())
         .count();
     for city in observation.cities() {
-        if city.production.is_some()
-            && !(layered && matches!(city.production, Some(ProductionItem::Building(_))))
+        if !city.waiting.is_empty()
+            || (city.production.is_some()
+                && !(layered && matches!(city.production, Some(ProductionItem::Building(_)))))
         {
             continue;
         }
@@ -107,11 +113,11 @@ fn economy(
                 } else {
                     hostiles.min(2)
                 };
-                if sites.can_spawn && military < demand {
+                if sites.can_spawn_military && military < demand {
                     Some((None, ProductionItem::Unit(UnitKind::Archer)))
                 } else {
                     let site = sites.tiles.first().copied();
-                    development(city, site, sites.can_spawn, horizon, &mut policy)
+                    development(city, site, sites.can_spawn_civilian, horizon, &mut policy)
                 }
             }
             _ => baseline_production(city, &sites, &mut policy, military < hostiles),
@@ -145,7 +151,8 @@ fn economy(
 /// Free district sites in increasing distance and canonical tile order.
 struct CitySites {
     tiles: Vec<TileId>,
-    can_spawn: bool,
+    can_spawn_military: bool,
+    can_spawn_civilian: bool,
 }
 
 // An observed walk bounded by the registry's maximum site radius is sufficient
@@ -158,7 +165,8 @@ fn city_sites(
 ) -> CitySites {
     let mut sites = CitySites {
         tiles: Vec::new(),
-        can_spawn: false,
+        can_spawn_military: false,
+        can_spawn_civilian: false,
     };
     let mut reached = BTreeSet::from([center]);
     let mut frontier = vec![center];
@@ -178,21 +186,35 @@ fn city_sites(
             }
         }
         next.sort_unstable();
-        sites.tiles.extend(next.iter().filter(|id| {
-            observation
+        for id in &next {
+            let Ok(i) = observation
                 .visible_tiles()
-                .binary_search_by_key(*id, |tile| tile.tile)
-                .ok()
-                .is_some_and(|i| {
-                    let tile = &observation.visible_tiles()[i];
-                    (!tile.occupied || vacated.contains(id))
-                        && !tile.district_reserved
-                        && !reserved.contains(id)
-                        && Unit::movement_cost(tile.terrain, false).is_some()
-                })
-        }));
-        if distance == 1 {
-            sites.can_spawn = !sites.tiles.is_empty();
+                .binary_search_by_key(id, |tile| tile.tile)
+            else {
+                continue;
+            };
+            let tile = &observation.visible_tiles()[i];
+            if reserved.contains(id)
+                || tile.district_reserved
+                || Unit::movement_cost(tile.terrain, false).is_none()
+                || (tile.occupied && tile.units.is_empty())
+            {
+                continue;
+            }
+            // Operational settler moves precede city orders; its escort stays behind.
+            let mut units = tile.units;
+            if vacated.contains(id) {
+                units.civilian = None;
+            }
+            if units.is_empty() {
+                sites.tiles.push(*id);
+            }
+            if distance == 1 {
+                sites.can_spawn_military |=
+                    units.can_enter(Some(observation.seat()), UnitKind::Archer);
+                sites.can_spawn_civilian |=
+                    units.can_enter(Some(observation.seat()), UnitKind::Settler);
+            }
         }
         frontier = next;
     }
@@ -338,25 +360,28 @@ fn baseline_production(
             ProductionItem::Building(building),
         ));
     }
-    if sites.can_spawn {
-        for kind in [
-            UnitKind::Warrior,
-            UnitKind::Archer,
-            UnitKind::Builder,
-            UnitKind::Settler,
-        ] {
-            // A founded size-one city immediately contributes one science and one
-            // culture. Compare that return to buildings on the same cost basis.
-            let output = if threatened && kind.is_military() {
-                i64::from(kind.defense())
-            } else if kind == UnitKind::Settler {
-                2
-            } else {
-                0
-            };
-            let score = output * 1000 / kind.production_cost();
-            options.push((score, ProductionItem::Unit(kind)));
+    for kind in [
+        UnitKind::Warrior,
+        UnitKind::Archer,
+        UnitKind::Builder,
+        UnitKind::Settler,
+    ] {
+        if (kind.is_military() && !sites.can_spawn_military)
+            || (!kind.is_military() && !sites.can_spawn_civilian)
+        {
+            continue;
         }
+        // A founded size-one city immediately contributes one science and one
+        // culture. Compare that return to buildings on the same cost basis.
+        let output = if threatened && kind.is_military() {
+            i64::from(kind.defense())
+        } else if kind == UnitKind::Settler {
+            2
+        } else {
+            0
+        };
+        let score = output * 1000 / kind.production_cost();
+        options.push((score, ProductionItem::Unit(kind)));
     }
     for &tile in &sites.tiles {
         for kind in DistrictKind::ALL

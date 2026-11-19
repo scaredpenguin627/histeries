@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{flag_string, flag_u32, flag_u64, seed_bytes, tournament, validate_flags};
 
-fn scenario(seed: u64, players: u32, size: &str) -> Result<Session, String> {
+pub(super) fn scenario(seed: u64, players: u32, size: &str) -> Result<Session, String> {
     let side = match size {
         "small" => 8,
         "large" => 16,
@@ -143,6 +143,12 @@ impl Game {
                 // The base tree's terminal leaf has no dependants. Keeping it
                 // open prevents science victory while all seats continue to play.
                 plan.commands.retain(|c| !matches!(c, Command::ResearchTechnology {technology, ..} if technology == "tech_25"));
+                // Preserve every capital in the endurance fixture while still issuing a unit order.
+                for command in &mut plan.commands {
+                    if let Command::UnitCaptureCity { player, unit, .. } = *command {
+                        *command = Command::UnitHold { player, unit };
+                    }
+                }
             }
             tournament::dispatch_plan(&mut self.session, &before, *seat, &plan.commands)?;
             if self.session.winner().is_some() {
@@ -171,6 +177,7 @@ fn audit_contact_orders(
         .iter()
         .filter_map(|command| match command {
             Command::UnitMove { player, unit, .. }
+            | Command::UnitCaptureCity { player, unit, .. }
             | Command::UnitAttack {
                 player,
                 attacker: unit,
@@ -332,7 +339,7 @@ fn restore(bytes: &[u8], objectives: &[u8], expected: u64) -> Result<Game, Strin
 
 fn verify_replay(bytes: &[u8], rounds: &[Boundary], start: u32) -> Result<(), String> {
     let replay = ReplayLog::decode(bytes).map_err(|e| e.to_string())?;
-    let mut replayed = Session::from_state(replay.initial_state().clone());
+    let mut replayed = replay.playback_session();
     let mut begin = 0;
     for (offset, boundary) in rounds.iter().enumerate() {
         let end = boundary.commands_end;

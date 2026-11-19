@@ -12,6 +12,9 @@ use histeries_rules_core::{
 };
 use serde::Deserialize;
 
+mod map_generation;
+pub use map_generation::{Feature, LandGeneration, MapGeneration, ResourceKind, Terrain};
+
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 
 /// The validated bundled rules shared by the simulation and its controllers.
@@ -30,6 +33,7 @@ pub struct Ruleset {
     name: String,
     provenance: String,
     schema_version: u32,
+    mapgen: Option<MapGeneration>,
     units: BTreeMap<String, UnitDefinition>,
     technologies: BTreeMap<String, TechnologyDefinition>,
     civics: BTreeMap<String, CivicDefinition>,
@@ -51,6 +55,10 @@ impl Ruleset {
             return Err(RulesetError::MissingField("name"));
         }
         validate_provenance(&raw.provenance)?;
+
+        if let Some(settings) = &raw.mapgen {
+            settings.validate()?;
+        }
 
         let mut units = BTreeMap::new();
         for raw_unit in raw.units {
@@ -144,6 +152,7 @@ impl Ruleset {
                         production_cost: raw_district.production_cost,
                         housing_capacity: raw_district.housing_capacity,
                         production_bonus: raw_district.production_bonus,
+                        adjacency_production: raw_district.adjacency_production,
                     },
                 )
                 .is_some()
@@ -229,6 +238,7 @@ impl Ruleset {
             name: raw.name,
             provenance: raw.provenance,
             schema_version: raw.schema_version,
+            mapgen: raw.mapgen,
             units,
             technologies,
             civics,
@@ -257,6 +267,13 @@ impl Ruleset {
     /// Returns the validated schema version.
     pub const fn schema_version(&self) -> u32 {
         self.schema_version
+    }
+
+    /// Returns the map profile. Schema-v1 documents without one inherit the base profile.
+    pub fn map_generation(&self) -> &MapGeneration {
+        self.mapgen
+            .as_ref()
+            .unwrap_or_else(|| base_ruleset().mapgen.as_ref().expect("bundled map profile"))
     }
 
     /// Returns units in stable identifier order.
@@ -433,6 +450,7 @@ pub struct DistrictDefinition {
     production_cost: u16,
     housing_capacity: u16,
     production_bonus: i16,
+    adjacency_production: u16,
 }
 
 impl DistrictDefinition {
@@ -459,6 +477,11 @@ impl DistrictDefinition {
     /// Returns the per-turn production bonus from the district.
     pub const fn production_bonus(&self) -> i16 {
         self.production_bonus
+    }
+
+    /// Production per adjacent district or city center of the same city.
+    pub const fn adjacency_production(&self) -> u16 {
+        self.adjacency_production
     }
 
     /// Alias for the district production cost.
@@ -613,6 +636,8 @@ struct RawRuleset {
     name: String,
     provenance: String,
     #[serde(default)]
+    mapgen: Option<MapGeneration>,
+    #[serde(default)]
     units: Vec<RawUnit>,
     #[serde(default)]
     technologies: Vec<RawProgression>,
@@ -667,6 +692,8 @@ struct RawDistrict {
     housing_capacity: u16,
     #[serde(default)]
     production_bonus: i16,
+    #[serde(default)]
+    adjacency_production: u16,
 }
 
 #[derive(Debug, Deserialize)]

@@ -27,3 +27,5 @@ Content changes remain reviewable and deterministic. The schema must be versione
 ## Phase 1 implementation details
 
 `rules-core` represents entity handles as typed stable IDs, keeps six canonical yield channels in `YieldSet`, and evaluates modifiers as scope, condition, and effect values. Context tags are sorted and deduplicated before matching. Each application is checked for fixed-point overflow, and callers can enforce the no-negative-yield invariant before committing state.
+
+[ADR-0012](0012-continental-map-generation.md) specifies the optional schema-v1 map generation tables.

@@ -6,7 +6,10 @@ use crate::city::base_ruleset;
 use crate::map::Terrain;
 
 /// Unit archetypes available in the headless Phase 1 combat model.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[repr(u8)]
 pub enum UnitKind {
     /// A basic melee unit.
@@ -107,7 +110,10 @@ impl UnitKind {
 }
 
 /// Promotion choices for military units.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[repr(u8)]
 pub enum PromotionKind {
     /// Improves attack strength.

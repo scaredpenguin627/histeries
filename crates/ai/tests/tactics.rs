@@ -195,3 +195,30 @@ fn later_unit_can_enter_a_tile_vacated_earlier_in_the_joint_plan() {
     assert_eq!(result.units()[0].tile, TileId::new(2));
     assert_eq!(result.units()[1].tile, TileId::new(1));
 }
+
+#[test]
+fn tactical_search_targets_military_in_either_slot_order() {
+    for (military, civilian) in [(5, 6), (6, 5)] {
+        let mut session = battlefield();
+        spawn(&mut session, 1, 1, 0, UnitKind::Archer);
+        spawn(&mut session, 1, 2, 0, UnitKind::Builder);
+        spawn(&mut session, 2, military, 2, UnitKind::Archer);
+        spawn(&mut session, 2, civilian, 2, UnitKind::Settler);
+        let player = PlayerId::new(1);
+        let command = Command::UnitAttack {
+            player,
+            attacker: UnitId::new(1),
+            defender: UnitId::new(military),
+        };
+        let planned = tactical::plan(&session.observe(player).unwrap(), &mut Vec::new());
+        assert_eq!(planned, [command]);
+        session.dispatch(planned[0].clone()).unwrap();
+        let observation = session.observe(player).unwrap();
+        let target = observation
+            .visible_units()
+            .iter()
+            .find(|unit| unit.id == UnitId::new(civilian))
+            .unwrap();
+        assert_eq!(target.hp, UnitKind::Settler.max_hp());
+    }
+}

@@ -145,7 +145,18 @@ fn derive_seed(master_seed: [u8; 32], name: &str) -> [u8; 32] {
 macro_rules! typed_id {
     ($name:ident) => {
         /// A stable generational-arena key for a rules entity.
-        #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
         pub struct $name(u32);
 
         impl $name {

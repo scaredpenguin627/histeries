@@ -22,3 +22,5 @@ State and replay formats use version 3 after adding cities and builder charges. 
 ## Consequences
 
 All city and builder changes cross typed commands and are visible through seat-scoped observations. Growth, production, district placement, and unit placement use integer arithmetic and canonical tile or entity ordering. Future ruleset changes can add content tables without changing the city storage layout when the existing categories are sufficient.
+
+[ADR-0016](0016-city-production.md) extends the active order into a bounded FIFO queue and defines the per-turn production yield from adjacent districts.

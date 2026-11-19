@@ -3,6 +3,38 @@ id = "base"
 name = "Histeries Base"
 provenance = "designed"
 
+[mapgen]
+continents = 2
+land_percent = 66
+river_source_percent = 8
+
+[mapgen.land.plains]
+weight = 35
+features = { forest = 12, marsh = 4 }
+resources = { wheat = 8, stone = 3 }
+
+[mapgen.land.grassland]
+weight = 28
+features = { forest = 14, jungle = 9, marsh = 5 }
+resources = { wheat = 8, gold = 2 }
+
+[mapgen.land.desert]
+weight = 10
+resources = { gold = 6, iron = 2 }
+
+[mapgen.land.tundra]
+weight = 10
+features = { forest = 9 }
+resources = { stone = 5 }
+
+[mapgen.land.hill]
+weight = 14
+features = { forest = 16 }
+resources = { iron = 9, stone = 5, gold = 2 }
+
+[mapgen.land.mountain]
+weight = 3
+
 [[units]]
 id = "scout"
 movement = 2
@@ -311,17 +343,20 @@ housing_capacity = 2
 
 [[districts]]
 id = "campus"
+adjacency_production = 1
 production_cost = 80
 housing_capacity = 0
 
 [[districts]]
 id = "industrial_zone"
+adjacency_production = 1
 production_cost = 100
 housing_capacity = 0
 production_bonus = 1
 
 [[districts]]
 id = "harbor"
+adjacency_production = 1
 production_cost = 90
 housing_capacity = 0
 

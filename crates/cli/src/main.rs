@@ -11,7 +11,9 @@
     )
 ))]
 mod memgate;
+mod output;
 mod selfplay;
+mod start;
 mod tournament;
 
 use std::{env, fs};
@@ -50,6 +52,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             )
         ))]
         "memgate" => memgate::run(&args[1..]),
+        #[cfg(not(target_family = "wasm"))]
+        "mcp" => command_mcp(&args[1..]),
         "map" => command_map(&args[1..]),
         "editor" | "scenario-editor" => command_editor(&args[1..]),
         "help" | "--help" | "-h" => {
@@ -60,12 +64,39 @@ fn run(args: Vec<String>) -> Result<(), String> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn command_mcp(args: &[String]) -> Result<(), String> {
+    validate_flags(args, &["--players", "--seed", "--listen", "--state"], 0)?;
+    let listen = flag_string(args, "--listen")?
+        .map(|s| {
+            s.parse()
+                .map_err(|_| "--listen requires an IP address and port")
+        })
+        .transpose()?;
+    let session = if let Some(path) = flag_string(args, "--state")? {
+        if flag_string(args, "--players")?.is_some() || flag_string(args, "--seed")?.is_some() {
+            return Err("--state supplies the seats and map; omit --players and --seed".into());
+        }
+        let bytes = fs::read(&path).map_err(|error| format!("read {path}: {error}"))?;
+        Session::from_save_bytes(&bytes).map_err(|error| format!("decode {path}: {error}"))?
+    } else {
+        selfplay::scenario(
+            flag_u64(args, "--seed")?.unwrap_or(0),
+            flag_u32(args, "--players")?.unwrap_or(2),
+            "small",
+        )?
+    };
+    histeries_mcp::serve(session, listen)
+}
+
 fn command_new(args: &[String]) -> Result<(), String> {
     validate_flags(
         args,
         &[
             "--players",
             "--width",
+            "--map-ruleset",
+            "--setup",
             "--height",
             "--seed",
             "--output",
@@ -83,11 +114,22 @@ fn command_new(args: &[String]) -> Result<(), String> {
         return Err("--players must be between 1 and 8".to_owned());
     }
     let topology = FlatHex::new(width, height, false, false).map_err(|error| error.to_string())?;
-    let map = generate_map(topology, seed_bytes(seed));
+    let map = match flag_string(args, "--map-ruleset")? {
+        Some(path) => {
+            let source = fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+            let ruleset = histeries_ruleset::Ruleset::from_toml(&source)
+                .map_err(|e| format!("{path}: {e}"))?;
+            histeries_sim::generate_map_with_ruleset(topology, seed_bytes(seed), &ruleset)
+        }
+        None => generate_map(topology, seed_bytes(seed)),
+    };
     let seats = (1..=players).map(PlayerId::new);
-    let session = Session::with_map(seats, map);
-    write_state(&output, &session.state_snapshot())?;
-    write_replay(replay_output.as_deref(), &session)?;
+    let session = match flag_string(args, "--setup")?.as_deref().unwrap_or("empty") {
+        "empty" => Session::with_map(seats, map),
+        "frontier" => start::frontier(map, players)?,
+        _ => return Err("--setup must be empty or frontier".into()),
+    };
+    output::write_session(&session, &output, replay_output.as_deref(), None, None)?;
     println!(
         "turn=0 hash={} output={output}",
         session.state_hash().value()
@@ -109,12 +151,16 @@ fn command_step(args: &[String]) -> Result<(), String> {
             player: PlayerId::new(player),
         })
         .map_err(|error| error.to_string())?;
-    let snapshot = session.state_snapshot();
-    write_state(&output, &snapshot)?;
-    write_replay(replay_output.as_deref(), &session)?;
+    output::write_session(
+        &session,
+        &output,
+        replay_output.as_deref(),
+        Some(&input),
+        None,
+    )?;
     println!(
         "turn={} hash={} output={output}",
-        snapshot.turn(),
+        session.turn(),
         session.state_hash().value()
     );
     Ok(())
@@ -143,12 +189,16 @@ fn command_run(args: &[String]) -> Result<(), String> {
         }
         release_round_history(&mut session, replay_output.is_some());
     }
-    let snapshot = session.state_snapshot();
-    write_state(&output, &snapshot)?;
-    write_replay(replay_output.as_deref(), &session)?;
+    output::write_session(
+        &session,
+        &output,
+        replay_output.as_deref(),
+        Some(&input),
+        None,
+    )?;
     println!(
         "turn={} hash={} output={output}",
-        snapshot.turn(),
+        session.turn(),
         session.state_hash().value()
     );
     Ok(())
@@ -188,6 +238,29 @@ fn command_map(args: &[String]) -> Result<(), String> {
 }
 
 fn command_editor(args: &[String]) -> Result<(), String> {
+    if args.get(1).is_some_and(|action| action == "apply") {
+        validate_flags(args, &["--commands", "--output", "--replay-output"], 2)?;
+        let input = positional(args, 0, "state path")?;
+        let output = flag_string(args, "--output")?.unwrap_or_else(|| input.clone());
+        let file = flag_string(args, "--commands")?.ok_or("--commands PATH is required")?;
+        let data = std::fs::read(&file).map_err(|error| format!("{file}: {error}"))?;
+        let batch: Vec<Command> =
+            serde_json::from_slice(&data).map_err(|error| format!("{file}: {error}"))?;
+        let mut session = Session::from_state(read_state(&input)?);
+        for (index, command) in batch.into_iter().enumerate() {
+            let id = command.id();
+            session
+                .dispatch(command)
+                .map_err(|error| format!("order {} ({id}): {error}", index + 1))?;
+        }
+        return output::write_session(
+            &session,
+            &output,
+            flag_string(args, "--replay-output")?.as_deref(),
+            Some(&input),
+            Some(&file),
+        );
+    }
     validate_flags(
         args,
         &[
@@ -238,12 +311,16 @@ fn command_editor(args: &[String]) -> Result<(), String> {
     session
         .dispatch(command)
         .map_err(|error| error.to_string())?;
-    let snapshot = session.state_snapshot();
-    write_state(&output, &snapshot)?;
-    write_replay(replay_output.as_deref(), &session)?;
+    output::write_session(
+        &session,
+        &output,
+        replay_output.as_deref(),
+        Some(&input),
+        None,
+    )?;
     println!(
         "turn={} hash={} output={output}",
-        snapshot.turn(),
+        session.turn(),
         session.state_hash().value()
     );
     Ok(())
@@ -252,18 +329,6 @@ fn command_editor(args: &[String]) -> Result<(), String> {
 fn read_state(path: &str) -> Result<SimulationState, String> {
     let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
     SimulationState::decode(&bytes).map_err(|error| format!("decode {path}: {error}"))
-}
-
-fn write_state(path: &str, state: &SimulationState) -> Result<(), String> {
-    fs::write(path, state.encode()).map_err(|error| format!("write {path}: {error}"))
-}
-
-fn write_replay(path: Option<&str>, session: &Session) -> Result<(), String> {
-    if let Some(path) = path {
-        fs::write(path, session.replay().encode())
-            .map_err(|error| format!("write {path}: {error}"))?;
-    }
-    Ok(())
 }
 
 fn map_ascii(map: &MapState) -> String {
@@ -423,7 +488,7 @@ fn seed_bytes(seed: u64) -> [u8; 32] {
 }
 
 fn usage() -> String {
-    "usage: histeries <new|step|run|replay|tournament|selfplay|map|editor> ...\n  new [--players N] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  map STATE\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
+    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N] [--listen 127.0.0.1:PORT]\n  map STATE\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
 }
 
 #[cfg(test)]
@@ -456,12 +521,89 @@ mod tests {
 
     use std::{env, fs, path::PathBuf};
 
-    use super::{map_ascii, parse_feature, parse_terrain, run, seed_bytes, terrain_glyph};
+    use super::{
+        map_ascii, parse_feature, parse_terrain, read_state, run, seed_bytes, terrain_glyph,
+    };
     use histeries_hex::FlatHex;
-    use histeries_sim::{Feature, MapState, Terrain};
+    use histeries_rules_core::PlayerId;
+    use histeries_sim::{Feature, MapState, Session, Terrain};
 
     fn temp_path(name: &str) -> PathBuf {
         env::temp_dir().join(format!("histeries-cli-{name}-{}.bin", std::process::id()))
+    }
+
+    #[test]
+    fn batch_output_failure_preserves_input_and_is_retryable() {
+        let dir = temp_path("retry");
+        fs::create_dir_all(&dir).unwrap();
+        let save = dir.join("game.hst");
+        let batch = dir.join("orders.json");
+        let replay = dir.join("game.hrep");
+        let game = Session::new([PlayerId::new(1), PlayerId::new(2)]);
+        let original = game.state_snapshot().encode();
+        fs::write(&save, &original).unwrap();
+        fs::write(
+            &batch,
+            r#"[{"command":"turn.end","player":1},{"command":"turn.end","player":2}]"#,
+        )
+        .unwrap();
+        let apply = |dest: &std::path::Path| {
+            run(vec![
+                "scenario-editor".into(),
+                save.display().to_string(),
+                "apply".into(),
+                "--commands".into(),
+                batch.display().to_string(),
+                "--replay-output".into(),
+                dest.display().to_string(),
+            ])
+        };
+        for bad in [
+            dir.join("missing").join("replay"),
+            dir.join(".").join("game.hst"),
+            batch.clone(),
+        ] {
+            assert!(apply(&bad).is_err());
+            assert_eq!(fs::read(&save).unwrap(), original);
+        }
+        apply(&replay).unwrap();
+        let final_state = read_state(save.to_str().unwrap()).unwrap();
+        assert_eq!(final_state.turn(), 1);
+        let log = histeries_sim::ReplayLog::decode(&fs::read(&replay).unwrap()).unwrap();
+        assert_eq!(log.replay().unwrap().state_hash(), final_state.state_hash());
+        for file in [batch, save, replay] {
+            fs::remove_file(file).unwrap();
+        }
+        fs::remove_dir(dir).unwrap();
+    }
+
+    #[test]
+    fn custom_map_ruleset_is_applied_before_writing_new_state() {
+        let profile = temp_path("ocean-profile");
+        let state = temp_path("ocean-state");
+        fs::write(&profile, "schema_version=1\nid='sea'\nname='Sea'\nprovenance='designed'\n[mapgen]\ncontinents=1\nland_percent=0\nriver_source_percent=0\n[mapgen.land.desert]\nweight=1").unwrap();
+        let args = vec![
+            "new".into(),
+            "--map-ruleset".into(),
+            profile.display().to_string(),
+            "--output".into(),
+            state.display().to_string(),
+        ];
+        run(args.clone()).unwrap();
+        let snapshot = super::read_state(state.to_str().unwrap()).unwrap();
+        assert!(
+            snapshot
+                .map()
+                .unwrap()
+                .tiles()
+                .all(|(_, t)| t.terrain == Terrain::Ocean)
+        );
+        let original_bytes = fs::read(&state).unwrap();
+        fs::write(&profile, "invalid").unwrap();
+        assert!(run(args).is_err());
+        assert_eq!(fs::read(&state).unwrap(), original_bytes);
+        fs::remove_file(profile).unwrap();
+        fs::remove_file(state).unwrap();
     }
 
     #[test]

@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use histeries_hex::TileId;
+use histeries_rules_core::PlayerId;
 use histeries_sim::{
     Command, Observation, Unit, UnitKind, UnitObservation, VisibleTileObservation,
 };
@@ -37,6 +38,7 @@ pub(crate) fn plan_settlers(
         .flat_map(|unit| tiles[&unit.tile].neighbors.iter().copied())
         .collect();
     let mut field = SettlementMap {
+        player,
         tiles,
         enemy_zoc,
         cities: observation.cities().iter().map(|city| city.tile).collect(),
@@ -70,6 +72,7 @@ pub(crate) fn plan_settlers(
 }
 
 struct SettlementMap<'a> {
+    player: PlayerId,
     tiles: BTreeMap<TileId, &'a VisibleTileObservation>,
     enemy_zoc: BTreeSet<TileId>,
     cities: BTreeSet<TileId>,
@@ -106,7 +109,9 @@ impl SettlementMap<'_> {
             let Some(tile) = self.tiles.get(&at) else {
                 continue;
             };
-            if !tile.district_reserved
+            if (!tile.occupied
+                || (tile.units.civilian == Some(settler.id) && tile.units.military.is_none()))
+                && !tile.district_reserved
                 && Unit::movement_cost(tile.terrain, tile.road).is_some()
                 && seen.insert(at)
             {
@@ -123,7 +128,7 @@ impl SettlementMap<'_> {
                     continue;
                 };
                 if cost > movement
-                    || dest.occupied
+                    || !dest.can_enter_unit(Some(self.player), UnitKind::Settler)
                     || self.routes.contains(next)
                     || path.contains(next)
                     || (self.enemy_zoc.contains(&at) && !self.enemy_zoc.contains(next))
@@ -140,7 +145,7 @@ impl SettlementMap<'_> {
 
     fn open_for_expansion(&self, tile: TileId, origin: TileId) -> bool {
         self.tiles.get(&tile).is_some_and(|entry| {
-            (tile == origin || !entry.occupied)
+            ((tile == origin && entry.units.military.is_none()) || !entry.occupied)
                 && !self.cities.contains(&tile)
                 && !entry.district_reserved
                 && Unit::movement_cost(entry.terrain, entry.road).is_some()
@@ -353,6 +358,32 @@ mod tests {
                 plan_settlers(&observation, &mut Vec::new(), &mut Policy::Random(&mut rng));
             assert_eq!(sites, BTreeSet::from([expected[slot]]));
         }
+    }
+
+    #[test]
+    fn settler_can_cross_escort_to_found_past_a_reserved_site() {
+        let mut game = map(5);
+        capital(&mut game);
+        game.dispatch(Command::CityBuildDistrict {
+            player: PLAYER,
+            city: CityId::new(0),
+            kind: histeries_sim::DistrictKind::Campus,
+            tile: TileId::new(1),
+        })
+        .unwrap();
+        spawn(&mut game, PLAYER, 3, UnitKind::Settler, 1);
+        spawn(&mut game, PLAYER, 4, UnitKind::Warrior, 2);
+        let mut operations = Vec::new();
+        let (commands, sites) = plan_settlers(
+            &game.observe(PLAYER).unwrap(),
+            &mut operations,
+            &mut Policy::Greedy,
+        );
+        assert_eq!(sites, BTreeSet::from([TileId::new(3)]));
+        for command in commands {
+            game.dispatch(command).unwrap();
+        }
+        assert_eq!(game.observe(PLAYER).unwrap().cities().len(), 2);
     }
 
     #[test]

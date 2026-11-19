@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use histeries_hex::TileId;
-use histeries_rules_core::NamedRng;
+use histeries_rules_core::{CityId, NamedRng, PlayerId};
 use histeries_sim::{
     CombatDamage, Command, Observation, ProductionItem, Unit, VisibleTileObservation,
     VisibleUnitObservation,
@@ -40,6 +40,7 @@ pub fn random(
 }
 
 struct Battlefield<'a> {
+    enemy_cities: BTreeMap<TileId, (CityId, PlayerId)>,
     tiles: BTreeMap<TileId, &'a VisibleTileObservation>,
     blocked: BTreeSet<TileId>,
     // Distances to the closest observed hostile through revealed traversable tiles.
@@ -53,22 +54,32 @@ impl<'a> Battlefield<'a> {
             .iter()
             .map(|tile| (tile.tile, tile))
             .collect();
-        let unit_tiles: BTreeSet<_> = observation
-            .visible_units()
-            .iter()
-            .map(|unit| unit.tile)
-            .collect();
         let mut blocked: BTreeSet<_> = tiles
             .values()
             .filter(|tile| {
-                tile.district_reserved || (tile.occupied && !unit_tiles.contains(&tile.tile))
+                tile.district_reserved
+                    || (tile.occupied && tile.units.is_empty())
+                    || (tile.units.civilian.is_some()
+                        && tile.units.owner != Some(observation.seat()))
             })
             .map(|tile| tile.tile)
             .collect();
+        let mut new_sites = BTreeMap::new();
         for operation in operations {
             match operation {
-                Operation::SettlementSite(_, tile)
-                | Operation::Produce(_, ProductionItem::District { tile, .. }) => {
+                Operation::SettlementSite(unit, tile) => {
+                    new_sites.insert(*unit, *tile);
+                    blocked.insert(*tile);
+                }
+                Operation::Settle(unit) => {
+                    if !new_sites.contains_key(unit)
+                        && let Some(founder) =
+                            observation.units().iter().find(|owned| owned.id == *unit)
+                    {
+                        blocked.insert(founder.tile);
+                    }
+                }
+                Operation::Produce(_, ProductionItem::District { tile, .. }) => {
                     blocked.insert(*tile);
                 }
                 _ => {}
@@ -96,6 +107,12 @@ impl<'a> Battlefield<'a> {
             }
         }
         Self {
+            enemy_cities: observation
+                .visible_cities()
+                .iter()
+                .filter(|city| city.owner != observation.seat())
+                .map(|city| (city.tile, (city.id, city.owner)))
+                .collect(),
             tiles,
             blocked,
             threat_distance,
@@ -121,14 +138,16 @@ impl<'a> Battlefield<'a> {
 
 #[derive(Clone)]
 struct Position {
+    captured: BTreeSet<CityId>,
     units: Vec<VisibleUnitObservation>,
-    occupants: BTreeMap<TileId, usize>,
+    military: BTreeMap<TileId, usize>,
     commands: Vec<Command>,
     score: i64,
 }
 
 #[derive(Clone, Copy)]
 enum Order {
+    Capture(CityId),
     Attack {
         defender: usize,
         damage: CombatDamage,
@@ -148,7 +167,7 @@ impl Position {
         field.tiles[&tile]
             .neighbors
             .iter()
-            .filter_map(|neighbor| self.occupants.get(neighbor))
+            .filter_map(|neighbor| self.military.get(neighbor))
             .any(|index| {
                 let neighbor = self.units[*index];
                 neighbor.owner != unit.owner && neighbor.kind.is_military()
@@ -163,8 +182,22 @@ impl Position {
     ) -> Vec<(Order, i32)> {
         let unit = self.units[actor];
         let mut options = Vec::new();
+        if unit.movement > 0 && unit.kind.range() == 1 {
+            for adjacent in &field.tiles[&unit.tile].neighbors {
+                if let Some(&(city, owner)) = field.enemy_cities.get(adjacent)
+                    && !self.captured.contains(&city)
+                    && !field.tiles[adjacent]
+                        .neighbors
+                        .iter()
+                        .filter_map(|tile| self.military.get(tile))
+                        .any(|index| self.units[*index].owner == Some(owner))
+                {
+                    options.push((Order::Capture(city), 400));
+                }
+            }
+        }
         for (tile, distance) in range {
-            if let Some(&index) = self.occupants.get(tile) {
+            if let Some(&index) = self.military.get(tile) {
                 let target = self.units[index];
                 if let Ok(damage) = unit.forecast_attack(target, *distance) {
                     let killed = damage.to_defender >= target.hp;
@@ -195,7 +228,7 @@ impl Position {
                 continue;
             };
             if unit.movement < cost
-                || self.occupants.contains_key(destination)
+                || self.military.contains_key(destination)
                 || field.blocked.contains(destination)
                 || (in_zoc && !self.in_zoc(field, unit, *destination))
             {
@@ -227,7 +260,7 @@ impl Position {
                     let hit = &mut self.units[index];
                     hit.hp -= dealt;
                     if hit.hp <= 0 {
-                        self.occupants.remove(&hit.tile);
+                        self.military.remove(&hit.tile);
                     }
                 }
                 self.units[actor].movement = 0;
@@ -243,8 +276,8 @@ impl Position {
                 Command::UnitHeal { player, unit }
             }
             Order::Move { destination, cost } => {
-                self.occupants.remove(&self.units[actor].tile);
-                self.occupants.insert(destination, actor);
+                self.military.remove(&self.units[actor].tile);
+                self.military.insert(destination, actor);
                 self.units[actor].tile = destination;
                 self.units[actor].movement -= cost;
                 Command::UnitMove {
@@ -252,6 +285,11 @@ impl Position {
                     unit,
                     destination,
                 }
+            }
+            Order::Capture(city) => {
+                self.captured.insert(city);
+                self.units[actor].movement = 0;
+                Command::UnitCaptureCity { player, unit, city }
             }
             Order::Hold => {
                 self.units[actor].movement = 0;
@@ -274,14 +312,16 @@ fn search(
         .enumerate()
         .filter(|(_, unit)| unit.owner == Some(observation.seat()) && unit.kind.is_military());
     let field = Battlefield::new(observation, operations);
-    let occupants = units
+    let military = units
         .iter()
         .enumerate()
+        .filter(|(_, unit)| unit.kind.is_military())
         .map(|(index, unit)| (unit.tile, index))
         .collect();
     let mut beam = vec![Position {
+        captured: BTreeSet::new(),
         units: units.to_vec(),
-        occupants,
+        military,
         commands: Vec::new(),
         score: 0,
     }];
@@ -320,6 +360,7 @@ fn search(
             attacker, defender, ..
         } => Operation::Attack(*attacker, *defender),
         Command::UnitMove { unit, .. }
+        | Command::UnitCaptureCity { unit, .. }
         | Command::UnitHeal { unit, .. }
         | Command::UnitHold { unit, .. } => Operation::UnitAction(*unit),
         _ => unreachable!("only tactical orders enter the beam"),
