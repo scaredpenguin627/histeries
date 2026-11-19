@@ -3,77 +3,19 @@
 use std::{collections::BTreeMap, fmt};
 
 use histeries_hex::{FlatHex, TileId, TileTopology, TopologyError};
-use histeries_rules_core::NamedRng;
+mod generation;
+
+pub use generation::{generate_map, generate_map_with_ruleset};
+pub use histeries_ruleset::{Feature, ResourceKind, Terrain};
 
 const MAP_MAGIC: &[u8; 4] = b"MAP1";
 const MAP_VERSION: u16 = 1;
 
-/// Terrain categories used by the base map generator.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum Terrain {
-    /// Lowland suitable for general settlement.
-    Plains = 0,
-    /// Productive temperate lowland.
-    Grassland = 1,
-    /// Dry lowland.
-    Desert = 2,
-    /// Cold lowland.
-    Tundra = 3,
-    /// Shallow water.
-    Coast = 4,
-    /// Deep water.
-    Ocean = 5,
-    /// Elevated terrain.
-    Hill = 6,
-    /// Impassable high terrain.
-    Mountain = 7,
-}
-
-impl Terrain {
-    pub(crate) const fn from_u8(value: u8) -> Option<Self> {
-        Some(match value {
-            0 => Self::Plains,
-            1 => Self::Grassland,
-            2 => Self::Desert,
-            3 => Self::Tundra,
-            4 => Self::Coast,
-            5 => Self::Ocean,
-            6 => Self::Hill,
-            7 => Self::Mountain,
-            _ => return None,
-        })
-    }
-}
-
-/// Feature categories placed on terrain.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum Feature {
-    /// No feature.
-    None = 0,
-    /// Temperate woodland.
-    Forest = 1,
-    /// Tropical woodland.
-    Jungle = 2,
-    /// Wet lowland.
-    Marsh = 3,
-}
-
-impl Feature {
-    pub(crate) const fn from_u8(value: u8) -> Option<Self> {
-        Some(match value {
-            0 => Self::None,
-            1 => Self::Forest,
-            2 => Self::Jungle,
-            3 => Self::Marsh,
-            _ => return None,
-        })
-    }
-}
-
 /// One of the six topology edge directions used for a river segment.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[repr(u8)]
 pub enum RiverDirection {
     /// First edge direction.
@@ -99,32 +41,6 @@ impl RiverDirection {
             3 => Self::SouthWest,
             4 => Self::West,
             5 => Self::NorthWest,
-            _ => return None,
-        })
-    }
-}
-
-/// Resource categories placed on a tile.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[repr(u8)]
-pub enum ResourceKind {
-    /// A food resource.
-    Wheat = 0,
-    /// A construction resource.
-    Stone = 1,
-    /// A strategic metal.
-    Iron = 2,
-    /// A trade resource.
-    Gold = 3,
-}
-
-impl ResourceKind {
-    pub(crate) const fn from_u8(value: u8) -> Option<Self> {
-        Some(match value {
-            0 => Self::Wheat,
-            1 => Self::Stone,
-            2 => Self::Iron,
-            3 => Self::Gold,
             _ => return None,
         })
     }
@@ -368,68 +284,6 @@ fn validate_tile_state(tile: TileId, state: TileState) -> Result<(), MapError> {
         return Err(MapError::IncompatibleResource(tile));
     }
     Ok(())
-}
-
-/// Generates a deterministic map from a topology and master seed.
-pub fn generate_map(topology: FlatHex, seed: [u8; 32]) -> MapState {
-    let mut rng = NamedRng::new(seed, "mapgen");
-    let mut map = MapState::blank(topology);
-    for tile in (0..topology.tile_count()).map(|index| TileId::new(index as u32)) {
-        let roll = rng.next_bounded(100).unwrap_or(0);
-        let terrain = match roll {
-            0..=9 => Terrain::Ocean,
-            10..=15 => Terrain::Coast,
-            16..=45 => Terrain::Plains,
-            46..=70 => Terrain::Grassland,
-            71..=82 => Terrain::Desert,
-            83..=92 => Terrain::Tundra,
-            93..=97 => Terrain::Hill,
-            _ => Terrain::Mountain,
-        };
-        map.set_terrain(tile, terrain)
-            .expect("generated tile exists");
-        if matches!(
-            terrain,
-            Terrain::Plains
-                | Terrain::Grassland
-                | Terrain::Desert
-                | Terrain::Tundra
-                | Terrain::Hill
-        ) {
-            let feature_roll = rng.next_bounded(100).unwrap_or(0);
-            let feature = match feature_roll {
-                0..=9 => Feature::Forest,
-                10..=13 => Feature::Jungle,
-                14..=17 => Feature::Marsh,
-                _ => Feature::None,
-            };
-            map.set_feature(tile, feature)
-                .expect("generated feature is compatible");
-            if rng.next_bounded(100).unwrap_or(0) < 10 {
-                let resource = match rng.next_bounded(4).unwrap_or(0) {
-                    0 => ResourceKind::Wheat,
-                    1 => ResourceKind::Stone,
-                    2 => ResourceKind::Iron,
-                    _ => ResourceKind::Gold,
-                };
-                map.set_resource(tile, Some(resource))
-                    .expect("generated resource is compatible");
-            }
-            if rng.next_bounded(100).unwrap_or(0) < 8 {
-                let river = match rng.next_bounded(6).unwrap_or(0) {
-                    0 => RiverDirection::NorthEast,
-                    1 => RiverDirection::East,
-                    2 => RiverDirection::SouthEast,
-                    3 => RiverDirection::SouthWest,
-                    4 => RiverDirection::West,
-                    _ => RiverDirection::NorthWest,
-                };
-                map.set_river(tile, Some(river))
-                    .expect("generated river is compatible");
-            }
-        }
-    }
-    map
 }
 
 /// Map editing and serialization errors.

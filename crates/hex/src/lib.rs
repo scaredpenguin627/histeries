@@ -8,7 +8,9 @@
 use std::fmt;
 
 /// A stable tile identifier within a topology.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
 pub struct TileId(u32);
 
 impl TileId {
@@ -141,6 +143,19 @@ impl FlatHex {
         self.wrap_y
     }
 
+    /// Neighbors by edge, clockwise from north-east in the rendering embedding
+    /// (north-east, east, south-east, south-west, west, north-west).
+    /// Missing boundary edges and edges that wrap to the same tile are empty.
+    pub fn edge_neighbors(self, tile: TileId) -> [Option<TileId>; 6] {
+        let Some((q, r)) = self.coordinates(tile) else {
+            return [None; 6];
+        };
+        DIRECTIONS.map(|(dq, dr)| {
+            self.tile_at(q + dq, r + dr)
+                .filter(|neighbor| *neighbor != tile)
+        })
+    }
+
     fn coordinates(self, tile: TileId) -> Option<(i32, i32)> {
         if !self.contains(tile) {
             return None;
@@ -271,7 +286,8 @@ impl TileTopology for FlatHex {
     }
 }
 
-const DIRECTIONS: [(i32, i32); 6] = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)];
+// Clockwise from north-east, matching the public edge order.
+const DIRECTIONS: [(i32, i32); 6] = [(1, -1), (1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1)];
 
 fn normalize(value: i32, size: i32, wrapping: bool) -> Option<i32> {
     if (0..size).contains(&value) {
@@ -343,6 +359,37 @@ mod tests {
         );
         assert_eq!(map.neighbors(TileId::new(4)).len(), 6);
         assert!(map.neighbors(TileId::new(99)).is_empty());
+    }
+
+    #[test]
+    fn edge_neighbors_keep_compass_order_at_boundaries_and_wrapped_seams() {
+        let center = TileId::new(4);
+        assert_eq!(
+            map().edge_neighbors(center),
+            [2, 5, 7, 6, 3, 1].map(|id| Some(TileId::new(id)))
+        );
+        assert_eq!(
+            map().edge_neighbors(TileId::new(0)),
+            [
+                None,
+                Some(TileId::new(1)),
+                Some(TileId::new(3)),
+                None,
+                None,
+                None
+            ]
+        );
+        let seam = FlatHex::new(3, 3, true, true).unwrap();
+        assert_eq!(
+            seam.edge_neighbors(TileId::new(0)),
+            [7, 1, 3, 5, 2, 6].map(|id| Some(TileId::new(id)))
+        );
+        assert_eq!(
+            FlatHex::new(1, 1, true, true)
+                .unwrap()
+                .edge_neighbors(TileId::new(0)),
+            [None; 6]
+        );
     }
 
     #[test]

@@ -3,7 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The two Phase 1 victory predicates.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[repr(u8)]
 pub enum VictoryKind {
     /// One player owns the only remaining cities.

@@ -2,7 +2,7 @@
 
 Histeries is an open-source, clean-room, turn-based 4X strategy game built in Rust.
 
-The Phase 0 scaffold establishes the crate boundaries, deterministic-simulation decisions, data-driven ruleset direction, and CI entry points. Gameplay implementation begins in Phase 1. Read `AGENTS.md` for the project contract and `docs/ROADMAP.md` for the current task list.
+The headless game supports seeded continents, military and civilian units, cities, research, policies, AI opponents and agent-controlled seats. Read `AGENTS.md` for the project contract and `docs/ROADMAP.md` for the current task list.
 
 ## Local checks
 
@@ -18,7 +18,7 @@ The repository uses jj for version control. The GitHub Actions fast gate runs th
 The headless CLI uses the simulation command registry and versioned binary files.
 
 ```text
-histeries new --players 2 --width 8 --height 8 --seed 7 --output state.hst
+histeries new --players 2 --setup frontier --width 8 --height 8 --seed 7 --output state.hst
 histeries step state.hst --player 1
 histeries run state.hst --turns 10
 histeries map state.hst
@@ -32,3 +32,5 @@ Run `histeries tournament --opponent greedy --seed 0 --seeds 32 --turns 500`
 to play both seats on each of 32 generated maps. Use `--opponent random` for
 the seeded random baseline. The report includes the winner, victory type and
 final state hash for each game, along with aggregate win rate and planning time.
+
+Start a playable agent session with `histeries mcp --players 2 --seed 7`. To host an edited save, use `histeries mcp --state state.hst`. The [MCP guide](docs/mcp.md) covers transports, credentials, resources, tools and replay. Use `new --setup empty` for a blank scenario or pass `--map-ruleset PATH` to select a generation profile.

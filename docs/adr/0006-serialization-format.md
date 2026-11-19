@@ -22,3 +22,5 @@ Use option 2. State, commands, and replay logs have independent magic bytes and 
 ## Consequences
 
 The format is compact and stable, and corruption is rejected before state mutation. Every future field requires a versioning decision and round-trip tests. A migration can decode older versions without changing the canonical in-memory model.
+
+[ADR-0016](0016-city-production.md) defines v5 city queue encoding and v4 snapshot compatibility.

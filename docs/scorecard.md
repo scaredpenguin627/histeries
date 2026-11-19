@@ -1,18 +1,32 @@
 # Histeries scorecard
 
-CI fills the measured values. A blank value means the gate has not run yet.
+The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
-| Measure | Fast | Nightly | Weekly | Notes |
-| --- | ---: | ---: | ---: | --- |
-| Spec items implemented with tests |  |  |  | Counted from roadmap and test reports |
-| Determinism across thread counts |  |  |  | Per-turn state hashes |
-| Save/load hash equality |  |  |  | Replay and reload gate |
-| Bytes per live entity |  |  |  | Baseline at turn 100 |
-| Memory slope after turn 100 |  |  |  | Measured by dhat gate |
-| AI Elo versus `greedy` |  |  |  | Tournament evidence |
-| AI turn-time p95 |  |  |  | Budget in `docs/budgets.md` |
-| Panics and crashes |  |  |  | Self-play count |
-| Fast-gate wall time |  |  |  | Target under 15 minutes |
+## Phase 1 completion measurements · 2026-11-19
+
+All 1,000 ordinary games reached a victory with zero panics or errors on Windows x86-64 GNU with Rust 1.100.0. The 2–8-seat sample produced 918 science and 82 domination victories. The three-layer AI won 58 of 64 games against greedy on the fresh 30000–30031 seed cohort (90.625%, acceptance threshold 75%). It won all 64 games against random on those seeds. The 20000–20031 replication cohort produced 59 and 64 wins respectively. Seats swapped on every map. The full three-cohort tournament covered 384 games with zero draws, errors or crashes. [Per-game tournament evidence](sessions/phase1-completion-tournament.txt)
+
+| Local measurement | Fast · 2/4 seats, Small | Nightly · 8 seats, Large | Weekly · 16 seats, Huge | Ordinary · 2–8 seats, Small |
+| --- | ---: | ---: | ---: | ---: |
+| Completed games | 6 | 5 | 2 | 1,000 |
+| Matched round hashes, each of 1 vs 8 workers, save/load and replay | 1,200 | 2,500 | 2,000 | 40,451 |
+| Matched hashes after checkpoint restore | 432 | 1,220 | 976 | 10,435 |
+| Military units in contact receiving explicit orders | 1,658 | 1,657 | 376 | 92,264 |
+| Worst per-game planning p95 (µs) | 16,714 | 107,549 | 13,017 | 145,387 |
+| Maximum planning round (µs) | 42,000 | 746,613 | 184,874 | 462,937 |
+| Largest encoded save (bytes) | 6,340 | 18,337 | 55,757 | 8,038 |
+
+| Live heap measurement | Nightly | Weekly |
+| --- | ---: | ---: |
+| Checkpoints compared to a fresh process | 85 | 74 |
+| Peak live bytes per entity | 336.852 | 277.266 |
+| Maximum increase over turn-100 density (bytes/entity/turn) | 0.162 | 0.073 |
+| Maximum excess live bytes over fresh reload | 0 | 0 |
+| Live bytes after dropping the game | 0 | 0 |
+
+All seven heap final hashes matched the endurance runs. Both Huge games independently resumed from round 900 and matched all 1,000 hashes of their uninterrupted runs. Two earlier overlapping weekly runs exceeded the 2-second latency budget on seed 1, with maxima of 3,762,342 and 3,995,630 µs while builds and other fixtures ran. The archive preserves both failed gate receipts. The weekly table reports the isolated rerun. The final ordinary soak ran through `xtask soak`. An independent run of the frozen release executable used the same validation and seed schedule. All 40,451 ordinary-game and 1,200 fast-fixture round hashes matched the earlier build, as did the winners and contact orders. Replaying all 384 tournament games on the final build reproduced every per-game result and final hash. The endurance and heap fixtures ran before the final changes to post-victory validation and MCP access. Their stress mode disables conquest and terminal science, and the workers access the simulation directly. The final fast fixtures exercised that mode again. Strict local `cargo xtask ci-fast` passed in **391.783 seconds** against its 900-second budget, with all 118 tests passing. Hosted cross-OS hash comparisons and 4-vCPU runner timing require CI. In the two-seat MCP game, the agent issued 19 dispatches and 60 turn advances. Replaying turn 60 returned a science victory for seat 2. [MCP transcript](sessions/2026-11-19-mcp-llm-game.jsonl.gz)
+
+The archive contains full round-hash traces, weekly checkpoint receipts and recovered traces, all seven heap probes, the strict fast-gate receipt, per-game tournament results and SHA-256 checksums for the original records. Archive SHA-256 is `08f5021dca963d9a5facd55a7e6b374b2d5c335a424b0d2266eeb10f209253e3`. [Phase 1 verification archive](sessions/2026-11-19-phase1-completion-evidence.zip)
 
 ## P1-12 local measurements · 2026-11-19
 

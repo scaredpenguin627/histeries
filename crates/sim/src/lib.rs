@@ -11,11 +11,20 @@ use histeries_hex::{TileId, TileTopology};
 use histeries_rules_core::{CityId, PlayerId, UnitId};
 
 pub mod city;
+#[cfg(test)]
+mod conquest_tests;
 pub mod map;
+#[cfg(test)]
+mod production_tests;
 pub mod progression;
+mod session_view;
+pub use session_view::{MatchObservation, MatchView, Viewpoint};
 pub mod unit;
 pub use city::{BuildingKind, City, District, DistrictKind, ProductionItem};
-pub use map::{Feature, MapError, MapState, ResourceKind, RiverDirection, Terrain, generate_map};
+pub use map::{
+    Feature, MapError, MapState, ResourceKind, RiverDirection, Terrain, generate_map,
+    generate_map_with_ruleset,
+};
 pub use progression::{PlayerProgress, VictoryKind};
 pub use unit::{PromotionKind, Unit, UnitKind};
 
@@ -25,8 +34,8 @@ const STATE_MAGIC: &[u8; 4] = b"HST1";
 const COMMAND_MAGIC: &[u8; 4] = b"HCM1";
 const REPLAY_MAGIC: &[u8; 4] = b"HRP1";
 const COMMAND_FORMAT_VERSION: u16 = 3;
-const STATE_FORMAT_VERSION: u16 = 4;
-const REPLAY_FORMAT_VERSION: u16 = 4;
+const STATE_FORMAT_VERSION: u16 = 5;
+const REPLAY_FORMAT_VERSION: u16 = 5;
 
 /// A deterministic hash of canonical simulation state bytes.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -96,14 +105,17 @@ pub fn hash_bytes(bytes: &[u8]) -> StateHash {
 }
 
 /// A state-changing command with a stable string ID.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "command", deny_unknown_fields)]
 pub enum Command {
     /// Advances the simulation after a seat has completed its actions.
+    #[serde(rename = "turn.end")]
     TurnEnd {
         /// The seat completing its turn.
         player: PlayerId,
     },
     /// A deterministic editor command used to set a seat marker.
+    #[serde(rename = "editor.set_marker")]
     EditorSetMarker {
         /// The seat whose marker changes.
         player: PlayerId,
@@ -111,6 +123,7 @@ pub enum Command {
         value: i64,
     },
     /// Sets one tile's terrain through the editor command boundary.
+    #[serde(rename = "editor.set_terrain")]
     EditorSetTerrain {
         /// The seat issuing the editor command.
         player: PlayerId,
@@ -120,6 +133,7 @@ pub enum Command {
         terrain: Terrain,
     },
     /// Sets one tile's feature through the editor command boundary.
+    #[serde(rename = "editor.set_feature")]
     EditorSetFeature {
         /// The seat issuing the editor command.
         player: PlayerId,
@@ -129,6 +143,7 @@ pub enum Command {
         feature: Feature,
     },
     /// Sets or clears one tile's river edge.
+    #[serde(rename = "editor.set_river")]
     EditorSetRiver {
         /// The seat issuing the editor command.
         player: PlayerId,
@@ -138,6 +153,7 @@ pub enum Command {
         river: Option<RiverDirection>,
     },
     /// Sets or clears one tile's resource.
+    #[serde(rename = "editor.set_resource")]
     EditorSetResource {
         /// The seat issuing the editor command.
         player: PlayerId,
@@ -147,6 +163,7 @@ pub enum Command {
         resource: Option<ResourceKind>,
     },
     /// Moves one unit to an adjacent tile.
+    #[serde(rename = "unit.move")]
     UnitMove {
         /// The issuing seat.
         player: PlayerId,
@@ -156,6 +173,7 @@ pub enum Command {
         destination: TileId,
     },
     /// Builds a road under a unit.
+    #[serde(rename = "unit.build_road")]
     UnitBuildRoad {
         /// The issuing seat.
         player: PlayerId,
@@ -163,6 +181,7 @@ pub enum Command {
         unit: UnitId,
     },
     /// Attacks an enemy unit.
+    #[serde(rename = "unit.attack")]
     UnitAttack {
         /// The issuing seat.
         player: PlayerId,
@@ -171,7 +190,18 @@ pub enum Command {
         /// The defending unit.
         defender: UnitId,
     },
+    /// Occupies an adjacent undefended enemy city with a melee unit.
+    #[serde(rename = "unit.capture_city")]
+    UnitCaptureCity {
+        /// Attacking seat.
+        player: PlayerId,
+        /// Owned melee military unit.
+        unit: UnitId,
+        /// Enemy city to transfer.
+        city: CityId,
+    },
     /// Heals a unit in a safe position.
+    #[serde(rename = "unit.heal")]
     UnitHeal {
         /// The issuing seat.
         player: PlayerId,
@@ -179,6 +209,7 @@ pub enum Command {
         unit: UnitId,
     },
     /// Holds the unit's tile and spends its remaining movement.
+    #[serde(rename = "unit.hold")]
     UnitHold {
         /// The issuing seat.
         player: PlayerId,
@@ -186,6 +217,7 @@ pub enum Command {
         unit: UnitId,
     },
     /// Applies a unit promotion.
+    #[serde(rename = "unit.promote")]
     UnitPromote {
         /// The issuing seat.
         player: PlayerId,
@@ -195,6 +227,7 @@ pub enum Command {
         promotion: PromotionKind,
     },
     /// Spawns a player-owned unit for deterministic scenarios.
+    #[serde(rename = "unit.spawn")]
     UnitSpawn {
         /// The issuing seat.
         player: PlayerId,
@@ -206,6 +239,7 @@ pub enum Command {
         tile: TileId,
     },
     /// Spawns a barbarian unit for deterministic scenarios.
+    #[serde(rename = "barbarian.spawn")]
     BarbarianSpawn {
         /// The target tile.
         tile: TileId,
@@ -213,6 +247,7 @@ pub enum Command {
         kind: UnitKind,
     },
     /// Founds a city using an owned settler.
+    #[serde(rename = "city.found")]
     CityFound {
         /// The founding seat.
         player: PlayerId,
@@ -222,6 +257,7 @@ pub enum Command {
         unit: UnitId,
     },
     /// Founds a city using an ID allocated during dispatch.
+    #[serde(rename = "city.settle")]
     CitySettle {
         /// The founding seat.
         player: PlayerId,
@@ -229,6 +265,7 @@ pub enum Command {
         unit: UnitId,
     },
     /// Queues one city production order.
+    #[serde(rename = "city.set_production")]
     CitySetProduction {
         /// The issuing seat.
         player: PlayerId,
@@ -237,7 +274,18 @@ pub enum Command {
         /// Production order.
         item: ProductionItem,
     },
+    /// Appends an order behind the current production order.
+    #[serde(rename = "city.enqueue_production")]
+    CityEnqueueProduction {
+        /// The issuing seat.
+        player: PlayerId,
+        /// Target city.
+        city: CityId,
+        /// Production order to append.
+        item: ProductionItem,
+    },
     /// Queues a district at a selected tile after adjacency validation.
+    #[serde(rename = "city.build_district")]
     CityBuildDistrict {
         /// The issuing seat.
         player: PlayerId,
@@ -249,6 +297,7 @@ pub enum Command {
         tile: TileId,
     },
     /// Queues a building after prerequisite validation.
+    #[serde(rename = "city.build_building")]
     CityBuildBuilding {
         /// The issuing seat.
         player: PlayerId,
@@ -258,6 +307,7 @@ pub enum Command {
         building: BuildingKind,
     },
     /// Selects a technology for the issuing seat's research progress.
+    #[serde(rename = "research.technology")]
     ResearchTechnology {
         /// The issuing seat.
         player: PlayerId,
@@ -265,6 +315,7 @@ pub enum Command {
         technology: String,
     },
     /// Selects a civic for the issuing seat's culture progress.
+    #[serde(rename = "research.civic")]
     ResearchCivic {
         /// The issuing seat.
         player: PlayerId,
@@ -272,6 +323,7 @@ pub enum Command {
         civic: String,
     },
     /// Adopts or replaces a policy in one slot.
+    #[serde(rename = "policy.adopt")]
     PolicyAdopt {
         /// The issuing seat.
         player: PlayerId,
@@ -281,6 +333,7 @@ pub enum Command {
         policy: String,
     },
     /// Clears one policy slot.
+    #[serde(rename = "policy.remove")]
     PolicyRemove {
         /// The issuing seat.
         player: PlayerId,
@@ -302,6 +355,7 @@ impl Command {
             Self::UnitMove { .. } => "unit.move",
             Self::UnitBuildRoad { .. } => "unit.build_road",
             Self::UnitAttack { .. } => "unit.attack",
+            Self::UnitCaptureCity { .. } => "unit.capture_city",
             Self::UnitHeal { .. } => "unit.heal",
             Self::UnitHold { .. } => "unit.hold",
             Self::UnitPromote { .. } => "unit.promote",
@@ -310,6 +364,7 @@ impl Command {
             Self::CityFound { .. } => "city.found",
             Self::CitySettle { .. } => "city.settle",
             Self::CitySetProduction { .. } => "city.set_production",
+            Self::CityEnqueueProduction { .. } => "city.enqueue_production",
             Self::CityBuildDistrict { .. } => "city.build_district",
             Self::CityBuildBuilding { .. } => "city.build_building",
             Self::ResearchTechnology { .. } => "research.technology",
@@ -399,6 +454,12 @@ impl Command {
                 put_u32(&mut bytes, attacker.index());
                 put_u32(&mut bytes, defender.index());
             }
+            Self::UnitCaptureCity { player, unit, city } => {
+                bytes.push(23);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, unit.index());
+                put_u32(&mut bytes, city.index());
+            }
             Self::UnitHold { player, unit } => {
                 bytes.push(21);
                 put_u32(&mut bytes, player.index());
@@ -449,6 +510,12 @@ impl Command {
             }
             Self::CitySetProduction { player, city, item } => {
                 bytes.push(14);
+                put_u32(&mut bytes, player.index());
+                put_u32(&mut bytes, city.index());
+                encode_production_item(&mut bytes, *item);
+            }
+            Self::CityEnqueueProduction { player, city, item } => {
+                bytes.push(24);
                 put_u32(&mut bytes, player.index());
                 put_u32(&mut bytes, city.index());
                 encode_production_item(&mut bytes, *item);
@@ -547,6 +614,11 @@ impl Command {
                 player: PlayerId::new(reader.u32()?),
                 unit: UnitId::new(reader.u32()?),
             },
+            23 => Self::UnitCaptureCity {
+                player: PlayerId::new(reader.u32()?),
+                unit: UnitId::new(reader.u32()?),
+                city: CityId::new(reader.u32()?),
+            },
             8 => Self::UnitAttack {
                 player: PlayerId::new(reader.u32()?),
                 attacker: UnitId::new(reader.u32()?),
@@ -582,6 +654,11 @@ impl Command {
                 unit: UnitId::new(reader.u32()?),
             },
             14 => Self::CitySetProduction {
+                player: PlayerId::new(reader.u32()?),
+                city: CityId::new(reader.u32()?),
+                item: decode_production_item(&mut reader)?,
+            },
+            24 => Self::CityEnqueueProduction {
                 player: PlayerId::new(reader.u32()?),
                 city: CityId::new(reader.u32()?),
                 item: decode_production_item(&mut reader)?,
@@ -675,6 +752,10 @@ static COMMAND_SPECS: &[CommandSpec] = &[
         schema: "player:u32,city:u32,kind:u8,tile:u32",
     },
     CommandSpec {
+        id: "city.enqueue_production",
+        schema: "player:u32,city:u32,item:production",
+    },
+    CommandSpec {
         id: "city.found",
         schema: "player:u32,city:u32,unit:u32",
     },
@@ -733,6 +814,10 @@ static COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         id: "unit.build_road",
         schema: "player:u32,unit:u32",
+    },
+    CommandSpec {
+        id: "unit.capture_city",
+        schema: "player:u32,unit:u32,city:u32",
     },
     CommandSpec {
         id: "unit.heal",
@@ -886,14 +971,33 @@ impl SimulationState {
         for player in &self.ended_players {
             hasher.write_u64(player.index() as u64);
         }
+        // Extend the hash only when there is a waiting order, preserving all v4 hashes.
+        if self.cities.values().any(|city| !city.waiting.is_empty()) {
+            hasher.write_bytes(b"production-queues-v1");
+            for (id, city) in self
+                .cities
+                .iter()
+                .filter(|(_, city)| !city.waiting.is_empty())
+            {
+                hasher.write_u64(u64::from(id.index()));
+                hasher.write_u64(city.waiting.len() as u64);
+                for &item in &city.waiting {
+                    hash_production_item(&mut hasher, Some(item));
+                }
+            }
+        }
         hasher.finish()
     }
 
     /// Encodes state with a magic, format version, and canonical map ordering.
     pub fn encode(&self) -> Vec<u8> {
+        self.encode_version(STATE_FORMAT_VERSION)
+    }
+
+    fn encode_version(&self, version: u16) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(18 + self.markers.len() * 12);
         bytes.extend_from_slice(STATE_MAGIC);
-        put_u16(&mut bytes, STATE_FORMAT_VERSION);
+        put_u16(&mut bytes, version);
         put_u32(&mut bytes, self.turn);
         put_u32(&mut bytes, self.markers.len() as u32);
         for (player, marker) in &self.markers {
@@ -929,6 +1033,12 @@ impl SimulationState {
         put_u32(&mut bytes, self.cities.len() as u32);
         for (id, city) in &self.cities {
             encode_city(&mut bytes, *id, city);
+            if version >= 5 {
+                put_u8(&mut bytes, city.waiting.len() as u8);
+                for &item in &city.waiting {
+                    encode_production_item(&mut bytes, item);
+                }
+            }
         }
         put_u32(&mut bytes, self.progress.len() as u32);
         for (player, progress) in &self.progress {
@@ -950,7 +1060,10 @@ impl SimulationState {
     pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
         let mut reader = Reader::new(bytes);
         reader.expect_magic(STATE_MAGIC)?;
-        reader.expect_version(STATE_FORMAT_VERSION)?;
+        let version = reader.u16()?;
+        if !matches!(version, 4 | STATE_FORMAT_VERSION) {
+            return Err(SerializationError::UnsupportedVersion(version));
+        }
         let turn = reader.u32()?;
         let count = reader.count()?;
         let mut markers = BTreeMap::new();
@@ -1030,7 +1143,7 @@ impl SimulationState {
         if map.is_none() && (!units.is_empty() || !roads.is_empty()) {
             return Err(SerializationError::InvalidUnitState);
         }
-        let mut occupied = BTreeSet::new();
+        let mut occupied = BTreeMap::<TileId, UnitSlots>::new();
         for unit in units.values() {
             if unit
                 .owner
@@ -1038,9 +1151,11 @@ impl SimulationState {
             {
                 return Err(SerializationError::InvalidUnitState);
             }
-            if !occupied.insert(unit.tile) {
+            let slots = occupied.entry(unit.tile).or_default();
+            if (version == 4 && !slots.is_empty()) || !slots.can_enter(unit.owner, unit.kind) {
                 return Err(SerializationError::InvalidUnitState);
             }
+            slots.insert(unit);
             if unit.hp <= 0
                 || unit.hp > unit.kind.max_hp()
                 || unit.movement < 0
@@ -1074,7 +1189,17 @@ impl SimulationState {
         let mut occupied_city_tiles = BTreeSet::new();
         let mut occupied_district_tiles = BTreeSet::new();
         for _ in 0..city_count {
-            let (id, city) = decode_city(&mut reader)?;
+            let (id, mut city) = decode_city(&mut reader)?;
+            if version >= 5 {
+                let count = usize::from(reader.u8()?);
+                if count >= city::MAX_PRODUCTION_ORDERS || (count != 0 && city.production.is_none())
+                {
+                    return Err(SerializationError::InvalidCityState);
+                }
+                for _ in 0..count {
+                    city.append_waiting(decode_production_item(&mut reader)?);
+                }
+            }
             if previous_city.is_some_and(|previous| id <= previous) {
                 return Err(SerializationError::NonCanonicalOrder);
             }
@@ -1118,34 +1243,22 @@ impl SimulationState {
                     return Err(SerializationError::InvalidCityState);
                 }
             }
-            if let Some(ProductionItem::District { kind, tile }) = city.production
-                && (city.districts.contains_key(&tile)
-                    || tile == city.tile
-                    || map.topology().distance(city.tile, tile) > 3
-                    || city.has_district(kind))
-            {
-                return Err(SerializationError::InvalidCityState);
-            }
-            if let Some(ProductionItem::District { tile, .. }) = city.production {
-                let terrain = map
-                    .tile(tile)
-                    .ok_or(SerializationError::InvalidCityState)?
-                    .terrain;
-                if Unit::movement_cost(terrain, false).is_none() {
-                    return Err(SerializationError::InvalidCityState);
+            for (i, item) in city.orders().enumerate() {
+                city.validate_next_order(item, city.orders().take(i))
+                    .map_err(|_| SerializationError::InvalidCityState)?;
+                if let ProductionItem::District { tile, .. } = item {
+                    let valid = map
+                        .tile(tile)
+                        .is_some_and(|state| Unit::movement_cost(state.terrain, false).is_some());
+                    if !valid || tile == city.tile || map.topology().distance(city.tile, tile) > 3 {
+                        return Err(SerializationError::InvalidCityState);
+                    }
                 }
-            }
-            if let Some(ProductionItem::Building(building)) = city.production
-                && (city.has_building(building)
-                    || building
-                        .required_district()
-                        .is_some_and(|required| !city.has_district(required)))
-            {
-                return Err(SerializationError::InvalidCityState);
             }
             // A completed unit or district can wait in the queue for a free tile.
             // The blocking unit may also have moved since the last turn advance.
-            if let Some(item @ ProductionItem::Building(_)) = city.production
+            if version == 4
+                && let Some(item @ ProductionItem::Building(_)) = city.production
                 && city.production_stored >= item.cost()
             {
                 return Err(SerializationError::InvalidCityState);
@@ -1166,12 +1279,14 @@ impl SimulationState {
         }
         let mut queued_district_tiles = BTreeSet::new();
         for city in cities.values() {
-            if let Some(ProductionItem::District { tile, .. }) = city.production
-                && (occupied_city_tiles.contains(&tile)
-                    || occupied_district_tiles.contains(&tile)
-                    || !queued_district_tiles.insert(tile))
-            {
-                return Err(SerializationError::InvalidCityState);
+            for item in city.orders() {
+                if let ProductionItem::District { tile, .. } = item
+                    && (occupied_city_tiles.contains(&tile)
+                        || occupied_district_tiles.contains(&tile)
+                        || !queued_district_tiles.insert(tile))
+                {
+                    return Err(SerializationError::InvalidCityState);
+                }
             }
         }
         for unit in units.values() {
@@ -1262,7 +1377,10 @@ impl SimulationState {
         })
     }
 
-    fn apply(&mut self, command: &Command) -> Result<EventKind, DispatchError> {
+    fn apply(&mut self, command: &Command, rules: ReplayRules) -> Result<EventKind, DispatchError> {
+        if !rules.supports(command) {
+            return Err(DispatchError::UnregisteredCommand(command.id()));
+        }
         match command {
             Command::TurnEnd { player } => {
                 self.require_player(*player)?;
@@ -1282,8 +1400,11 @@ impl SimulationState {
                 for unit in self.units.values_mut() {
                     unit.reset_turn();
                 }
-                self.advance_cities();
-                self.advance_progress();
+                self.advance_cities(rules);
+                if rules == ReplayRules::CurrentV5 {
+                    self.advance_raiders();
+                }
+                self.advance_progress(rules);
                 self.ended_players.clear();
                 Ok(EventKind::TurnAdvanced { turn: self.turn })
             }
@@ -1358,8 +1479,11 @@ impl SimulationState {
                 player,
                 unit,
                 destination,
-            } => self.unit_move(*player, *unit, *destination),
+            } => self.unit_move(*player, *unit, *destination, rules),
             Command::UnitBuildRoad { player, unit } => self.unit_build_road(*player, *unit),
+            Command::UnitCaptureCity { player, unit, city } => {
+                self.capture_city(*player, *unit, *city)
+            }
             Command::UnitAttack {
                 player,
                 attacker,
@@ -1387,9 +1511,11 @@ impl SimulationState {
                 unit,
                 kind,
                 tile,
-            } => self.unit_spawn(*player, *unit, *kind, *tile),
+            } => self.unit_spawn(*player, *unit, *kind, *tile, rules),
             Command::BarbarianSpawn { tile, kind } => self.barbarian_spawn(*tile, *kind),
-            Command::CityFound { player, city, unit } => self.city_found(*player, *city, *unit),
+            Command::CityFound { player, city, unit } => {
+                self.city_found(*player, *city, *unit, rules)
+            }
             Command::CitySettle { player, unit } => {
                 let mut candidate = 0_u32;
                 for city in self.cities.keys() {
@@ -1400,26 +1526,39 @@ impl SimulationState {
                         .checked_add(1)
                         .ok_or(DispatchError::CityIdOverflow)?;
                 }
-                self.city_found(*player, CityId::new(candidate), *unit)
+                self.city_found(*player, CityId::new(candidate), *unit, rules)
             }
             Command::CitySetProduction { player, city, item } => {
-                self.city_set_production(*player, *city, *item)
+                self.city_set_production(*player, *city, *item, false)
+            }
+            Command::CityEnqueueProduction { player, city, item } => {
+                self.city_set_production(*player, *city, *item, true)
             }
             Command::CityBuildDistrict {
                 player,
                 city,
                 kind,
                 tile,
-            } => self.city_build_district(*player, *city, *kind, *tile),
+            } => self.city_set_production(
+                *player,
+                *city,
+                ProductionItem::District {
+                    kind: *kind,
+                    tile: *tile,
+                },
+                false,
+            ),
             Command::CityBuildBuilding {
                 player,
                 city,
                 building,
-            } => self.city_build_building(*player, *city, *building),
-            Command::ResearchTechnology { player, technology } => {
-                self.research_technology(*player, technology)
+            } => {
+                self.city_set_production(*player, *city, ProductionItem::Building(*building), false)
             }
-            Command::ResearchCivic { player, civic } => self.research_civic(*player, civic),
+            Command::ResearchTechnology { player, technology } => {
+                self.research_technology(*player, technology, rules)
+            }
+            Command::ResearchCivic { player, civic } => self.research_civic(*player, civic, rules),
             Command::PolicyAdopt {
                 player,
                 slot,
@@ -1429,11 +1568,65 @@ impl SimulationState {
         }
     }
 
+    fn capture_city(
+        &mut self,
+        player: PlayerId,
+        unit_id: UnitId,
+        city_id: CityId,
+    ) -> Result<EventKind, DispatchError> {
+        if !self.victories.is_empty() {
+            return Err(DispatchError::VictoryAlreadyReached);
+        }
+        let unit = self
+            .units
+            .get(&unit_id)
+            .ok_or(DispatchError::UnknownUnit(unit_id))?;
+        self.require_unit_owner(unit, player)?;
+        if unit.movement <= 0 {
+            return Err(DispatchError::InsufficientMovement);
+        }
+        let city = self
+            .cities
+            .get(&city_id)
+            .ok_or(DispatchError::UnknownCity(city_id))?;
+        let owner = city.owner;
+        let perimeter = self
+            .map
+            .as_ref()
+            .ok_or(DispatchError::NoMap)?
+            .topology()
+            .neighbors(city.tile);
+        if owner == player
+            || !unit.kind.is_military()
+            || unit.kind.range() != 1
+            || !perimeter.contains(&unit.tile)
+            || self.units.values().any(|other| {
+                other.owner == Some(owner)
+                    && other.kind.is_military()
+                    && perimeter.contains(&other.tile)
+            })
+        {
+            return Err(DispatchError::InvalidCombat);
+        }
+        self.cities.get_mut(&city_id).expect("validated city").owner = player;
+        self.units
+            .get_mut(&unit_id)
+            .expect("validated attacker")
+            .movement = 0;
+        self.check_victories(ReplayRules::CurrentV5);
+        Ok(EventKind::CityCaptured {
+            city: city_id,
+            previous_owner: owner,
+            owner: player,
+        })
+    }
+
     fn unit_move(
         &mut self,
         player: PlayerId,
         unit_id: UnitId,
         destination: TileId,
+        rules: ReplayRules,
     ) -> Result<EventKind, DispatchError> {
         let map = self.map.as_ref().ok_or(DispatchError::NoMap)?;
         let unit = self
@@ -1445,7 +1638,7 @@ impl SimulationState {
         if !map.topology().neighbors(unit.tile).contains(&destination) {
             return Err(DispatchError::InvalidMove);
         }
-        if self.tile_occupied(destination) {
+        if !self.unit_tile_open(destination, unit.owner, unit.kind, rules) {
             return Err(DispatchError::Occupied(destination));
         }
         if self.has_enemy_zoc(player, unit.tile) && !self.has_enemy_zoc(player, destination) {
@@ -1502,6 +1695,15 @@ impl SimulationState {
         attacker_id: UnitId,
         defender_id: UnitId,
     ) -> Result<EventKind, DispatchError> {
+        self.resolve_attack(Some(player), attacker_id, defender_id)
+    }
+
+    fn resolve_attack(
+        &mut self,
+        owner: Option<PlayerId>,
+        attacker_id: UnitId,
+        defender_id: UnitId,
+    ) -> Result<EventKind, DispatchError> {
         let attacker = self
             .units
             .get(&attacker_id)
@@ -1512,7 +1714,9 @@ impl SimulationState {
             .get(&defender_id)
             .ok_or(DispatchError::UnknownUnit(defender_id))?
             .clone();
-        self.require_unit_owner(&attacker, player)?;
+        if attacker.owner != owner {
+            return Err(DispatchError::UnauthorizedUnit(attacker_id));
+        }
         let map = self.map.as_ref().ok_or(DispatchError::NoMap)?;
         let distance = map.topology().distance(attacker.tile, defender.tile);
         let damage = VisibleUnitObservation::from(&attacker)
@@ -1539,6 +1743,60 @@ impl SimulationState {
             attacker_damage,
             defender_damage,
         })
+    }
+
+    fn advance_raiders(&mut self) {
+        let Some(topology) = self.map.as_ref().map(MapState::topology) else {
+            return;
+        };
+        let raiders: Vec<_> = self
+            .units
+            .values()
+            .filter(|u| u.owner.is_none())
+            .map(|u| u.id)
+            .collect();
+        for id in raiders {
+            let Some(unit) = self.units.get(&id) else {
+                continue;
+            };
+            let from = unit.tile;
+            let Some((distance, target, tile)) = self
+                .units
+                .values()
+                .filter(|other| other.owner.is_some() && other.kind.is_military())
+                .map(|other| (topology.distance(from, other.tile), other.id, other.tile))
+                .filter(|(distance, _, _)| *distance <= 2)
+                .min()
+            else {
+                continue;
+            };
+            if distance == 1 {
+                self.resolve_attack(None, id, target)
+                    .expect("adjacent opposing military after movement reset");
+            } else if let Some((destination, cost)) = topology
+                .neighbors(from)
+                .into_iter()
+                .filter(|next| {
+                    topology.distance(*next, tile) < distance
+                        && self.unit_tile_open(
+                            *next,
+                            None,
+                            UnitKind::Barbarian,
+                            ReplayRules::CurrentV5,
+                        )
+                })
+                .filter_map(|next| {
+                    let terrain = self.map.as_ref()?.tile(next)?.terrain;
+                    let cost = Unit::movement_cost(terrain, self.roads.contains(&next))?;
+                    (cost <= unit.movement).then_some((next, cost))
+                })
+                .next()
+            {
+                let mover = self.units.get_mut(&id).expect("raider is alive");
+                mover.tile = destination;
+                mover.movement -= cost;
+            }
+        }
     }
 
     fn unit_heal(&mut self, player: PlayerId, unit_id: UnitId) -> Result<EventKind, DispatchError> {
@@ -1583,6 +1841,7 @@ impl SimulationState {
         unit_id: UnitId,
         kind: UnitKind,
         tile: TileId,
+        rules: ReplayRules,
     ) -> Result<EventKind, DispatchError> {
         self.require_player(player)?;
         if kind == UnitKind::Barbarian {
@@ -1597,7 +1856,7 @@ impl SimulationState {
         if self.units.contains_key(&unit_id) {
             return Err(DispatchError::UnitAlreadyExists(unit_id));
         }
-        if self.tile_occupied(tile) {
+        if !self.unit_tile_open(tile, Some(player), kind, rules) {
             return Err(DispatchError::Occupied(tile));
         }
         self.units
@@ -1645,8 +1904,17 @@ impl SimulationState {
         player: PlayerId,
         city_id: CityId,
         unit_id: UnitId,
+        rules: ReplayRules,
     ) -> Result<EventKind, DispatchError> {
         self.require_player(player)?;
+        if rules == ReplayRules::CurrentV5
+            && self
+                .victories
+                .iter()
+                .any(|(winner, kind)| *winner != player && *kind == VictoryKind::Domination)
+        {
+            return Err(DispatchError::VictoryAlreadyReached);
+        }
         if self.cities.contains_key(&city_id) {
             return Err(DispatchError::CityAlreadyExists(city_id));
         }
@@ -1681,80 +1949,28 @@ impl SimulationState {
         player: PlayerId,
         city_id: CityId,
         item: ProductionItem,
+        append: bool,
     ) -> Result<EventKind, DispatchError> {
         self.require_city_owner(city_id, player)?;
-        self.validate_production(city_id, item)?;
-        self.cities
-            .get_mut(&city_id)
-            .expect("city owner was checked")
-            .queue(item);
-        Ok(EventKind::ProductionQueued { city: city_id })
-    }
-
-    fn city_build_district(
-        &mut self,
-        player: PlayerId,
-        city_id: CityId,
-        kind: DistrictKind,
-        tile: TileId,
-    ) -> Result<EventKind, DispatchError> {
-        self.require_city_owner(city_id, player)?;
-        self.validate_district_site(city_id, kind, tile)?;
-        self.cities
-            .get_mut(&city_id)
-            .expect("city owner was checked")
-            .queue(ProductionItem::District { kind, tile });
-        Ok(EventKind::ProductionQueued { city: city_id })
-    }
-
-    fn city_build_building(
-        &mut self,
-        player: PlayerId,
-        city_id: CityId,
-        building: BuildingKind,
-    ) -> Result<EventKind, DispatchError> {
-        self.require_city_owner(city_id, player)?;
-        self.validate_production(city_id, ProductionItem::Building(building))?;
-        self.cities
-            .get_mut(&city_id)
-            .expect("city owner was checked")
-            .queue(ProductionItem::Building(building));
-        Ok(EventKind::ProductionQueued { city: city_id })
-    }
-
-    fn validate_production(
-        &self,
-        city_id: CityId,
-        item: ProductionItem,
-    ) -> Result<(), DispatchError> {
-        if !item.is_valid() {
-            return Err(DispatchError::InvalidProduction);
+        let city = &self.cities[&city_id];
+        let prior_count = if append { city.orders().count() } else { 0 };
+        if prior_count >= city::MAX_PRODUCTION_ORDERS {
+            return Err(DispatchError::ProductionQueueFull);
+        }
+        city.validate_next_order(item, city.orders().take(prior_count))?;
+        if let ProductionItem::District { kind, tile } = item {
+            self.validate_district_site(city_id, kind, tile)?;
         }
         let city = self
             .cities
-            .get(&city_id)
-            .ok_or(DispatchError::UnknownCity(city_id))?;
-        match item {
-            ProductionItem::Unit(kind) => {
-                if kind == UnitKind::Barbarian {
-                    return Err(DispatchError::InvalidProduction);
-                }
-            }
-            ProductionItem::Building(building) => {
-                if city.has_building(building) {
-                    return Err(DispatchError::BuildingAlreadyBuilt(building));
-                }
-                if let Some(required) = building.required_district()
-                    && !city.has_district(required)
-                {
-                    return Err(DispatchError::MissingDistrict(required));
-                }
-            }
-            ProductionItem::District { kind, tile } => {
-                self.validate_district_site(city_id, kind, tile)?;
-            }
+            .get_mut(&city_id)
+            .expect("city owner was checked");
+        if append && city.production.is_some() {
+            city.append_waiting(item);
+        } else {
+            city.queue(item);
         }
-        Ok(())
+        Ok(EventKind::ProductionQueued { city: city_id })
     }
 
     fn validate_district_site(
@@ -1787,23 +2003,36 @@ impl SimulationState {
                 .cities
                 .values()
                 .any(|other| other.districts.contains_key(&tile))
-            || self.queued_district_at(tile)
+            || self.cities.values().any(|other| other.id != city_id && other.orders().any(|order| matches!(order, ProductionItem::District { tile: site, .. } if site == tile)))
         {
             return Err(DispatchError::Occupied(tile));
         }
         Ok(())
     }
 
-    fn advance_cities(&mut self) {
+    fn advance_cities(&mut self, rules: ReplayRules) {
         let city_ids: Vec<_> = self.cities.keys().copied().collect();
         for city_id in city_ids {
-            let Some(item) = self.cities.get_mut(&city_id).and_then(City::advance_turn) else {
+            let city = self.cities.get_mut(&city_id).expect("listed city exists");
+            let adjacency = if rules == ReplayRules::CurrentV5 {
+                self.map
+                    .as_ref()
+                    .map_or(0, |map| city.adjacency_production(&map.topology()))
+            } else {
+                0
+            };
+            let Some(item) = city.advance_turn(adjacency) else {
                 continue;
             };
-            if !self.complete_production(city_id, item)
-                && let Some(city) = self.cities.get_mut(&city_id)
-            {
+            let completed = self.complete_production(city_id, item, rules);
+            let city = self
+                .cities
+                .get_mut(&city_id)
+                .expect("production city exists");
+            if !completed {
                 city.restore_order(item);
+            } else {
+                city.start_next_order();
             }
         }
     }
@@ -1812,6 +2041,7 @@ impl SimulationState {
         &mut self,
         player: PlayerId,
         technology: &str,
+        rules: ReplayRules,
     ) -> Result<EventKind, DispatchError> {
         self.require_player(player)?;
         self.ensure_no_victory(player)?;
@@ -1845,7 +2075,7 @@ impl SimulationState {
         };
         if completed_immediately {
             self.refresh_policy_slots(player);
-            self.check_victories();
+            self.check_victories(rules);
         }
         Ok(EventKind::ResearchQueued {
             player,
@@ -1857,6 +2087,7 @@ impl SimulationState {
         &mut self,
         player: PlayerId,
         civic: &str,
+        rules: ReplayRules,
     ) -> Result<EventKind, DispatchError> {
         self.require_player(player)?;
         self.ensure_no_victory(player)?;
@@ -1890,7 +2121,7 @@ impl SimulationState {
         };
         if completed_immediately {
             self.refresh_policy_slots(player);
-            self.check_victories();
+            self.check_victories(rules);
         }
         Ok(EventKind::ResearchQueued {
             player,
@@ -1955,7 +2186,7 @@ impl SimulationState {
         }
     }
 
-    fn advance_progress(&mut self) {
+    fn advance_progress(&mut self, rules: ReplayRules) {
         let players: Vec<_> = self.markers.keys().copied().collect();
         for player in players {
             let science = self
@@ -2011,7 +2242,7 @@ impl SimulationState {
             }
             self.refresh_policy_slots(player);
         }
-        self.check_victories();
+        self.check_victories(rules);
     }
 
     fn refresh_policy_slots(&mut self, player: PlayerId) {
@@ -2023,7 +2254,10 @@ impl SimulationState {
         }
     }
 
-    fn check_victories(&mut self) {
+    fn check_victories(&mut self, rules: ReplayRules) {
+        if rules == ReplayRules::CurrentV5 && !self.victories.is_empty() {
+            return;
+        }
         let players: Vec<_> = self.markers.keys().copied().collect();
         let technology_count = city::base_ruleset().technologies().count();
         let city_count = self.cities.len();
@@ -2052,7 +2286,12 @@ impl SimulationState {
         }
     }
 
-    fn complete_production(&mut self, city_id: CityId, item: ProductionItem) -> bool {
+    fn complete_production(
+        &mut self,
+        city_id: CityId,
+        item: ProductionItem,
+        rules: ReplayRules,
+    ) -> bool {
         match item {
             ProductionItem::Building(building) => {
                 let Some(city) = self.cities.get_mut(&city_id) else {
@@ -2092,12 +2331,7 @@ impl SimulationState {
                         && map.tile(*tile).is_some_and(|state| {
                             Unit::movement_cost(state.terrain, false).is_some()
                         })
-                        && !self.units.values().any(|unit| unit.tile == *tile)
-                        && !self.cities.values().any(|other| other.tile == *tile)
-                        && !self
-                            .cities
-                            .values()
-                            .any(|other| other.districts.contains_key(tile))
+                        && self.unit_tile_open(*tile, Some(owner), kind, rules)
                 }) else {
                     return false;
                 };
@@ -2123,6 +2357,30 @@ impl SimulationState {
         }
     }
 
+    fn unit_tile_open(
+        &self,
+        tile: TileId,
+        owner: Option<PlayerId>,
+        kind: UnitKind,
+        rules: ReplayRules,
+    ) -> bool {
+        if self
+            .cities
+            .values()
+            .any(|city| city.tile == tile || city.districts.contains_key(&tile))
+        {
+            return false;
+        }
+        let mut slots = UnitSlots::default();
+        for unit in self.units.values().filter(|unit| unit.tile == tile) {
+            slots.insert(unit);
+        }
+        match rules {
+            ReplayRules::LegacyV4 => slots.is_empty(),
+            ReplayRules::CurrentV5 => slots.can_enter(owner, kind),
+        }
+    }
+
     fn tile_occupied(&self, tile: TileId) -> bool {
         self.tile_occupied_except_unit(tile, None)
     }
@@ -2141,10 +2399,7 @@ impl SimulationState {
 
     fn queued_district_at(&self, tile: TileId) -> bool {
         self.cities.values().any(|city| {
-            matches!(
-                city.production,
-                Some(ProductionItem::District { tile: queued, .. }) if queued == tile
-            )
+            city.orders().any(|item| matches!(item, ProductionItem::District { tile: queued, .. } if queued == tile))
         })
     }
 
@@ -2180,7 +2435,7 @@ impl SimulationState {
 }
 
 /// A seat-scoped observation with fog-of-war applied.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct Observation {
     seat: PlayerId,
     turn: u32,
@@ -2247,7 +2502,7 @@ impl Observation {
 }
 
 /// The seat-scoped projection of progression state.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct ProgressObservation {
     /// Stored science toward the selected technology.
     pub technology_progress: i64,
@@ -2268,7 +2523,7 @@ pub struct ProgressObservation {
 }
 
 /// Fog-safe tile data available to an observing seat.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct VisibleTileObservation {
     /// Stable tile ID.
     pub tile: TileId,
@@ -2284,14 +2539,61 @@ pub struct VisibleTileObservation {
     pub road: bool,
     /// Whether a unit, city center, or district occupies this visible tile.
     pub occupied: bool,
+    /// Units on this revealed tile. Both slots share one owner.
+    pub units: UnitSlots,
     /// A visible construction site reserved by a pending district order.
     pub district_reserved: bool,
     /// Topology neighbors in stable order.
     pub neighbors: Vec<TileId>,
 }
 
+/// Unit slots on a single tile, populated only for visible tiles in an observation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+pub struct UnitSlots {
+    /// The common owner, or None for an empty tile or a barbarian.
+    pub owner: Option<PlayerId>,
+    /// Military unit in the stack.
+    pub military: Option<UnitId>,
+    /// Civilian unit in the stack.
+    pub civilian: Option<UnitId>,
+}
+
+impl UnitSlots {
+    /// Whether both slots are empty.
+    pub fn is_empty(self) -> bool {
+        self.military.is_none() && self.civilian.is_none()
+    }
+
+    /// Whether a unit of this owner and kind can join the stack.
+    pub fn can_enter(self, owner: Option<PlayerId>, kind: UnitKind) -> bool {
+        self.is_empty()
+            || (self.owner == owner
+                && if kind.is_military() {
+                    self.military.is_none()
+                } else {
+                    self.civilian.is_none()
+                })
+    }
+
+    fn insert(&mut self, unit: &Unit) {
+        self.owner = unit.owner;
+        if unit.kind.is_military() {
+            self.military = Some(unit.id);
+        } else {
+            self.civilian = Some(unit.id);
+        }
+    }
+}
+
+impl VisibleTileObservation {
+    /// Whether unit and city occupancy allow entry, independent of terrain and ZOC.
+    pub fn can_enter_unit(&self, owner: Option<PlayerId>, kind: UnitKind) -> bool {
+        (!self.occupied || !self.units.is_empty()) && self.units.can_enter(owner, kind)
+    }
+}
+
 /// Fog-safe unit data on a visible tile.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct VisibleUnitObservation {
     /// Stable unit ID.
     pub id: UnitId,
@@ -2375,7 +2677,7 @@ impl VisibleUnitObservation {
 }
 
 /// Fog-safe city data on a visible tile.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct VisibleCityObservation {
     /// Stable city ID.
     pub id: CityId,
@@ -2390,7 +2692,7 @@ pub struct VisibleCityObservation {
 }
 
 /// The fog-of-war-safe projection of one unit.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct UnitObservation {
     /// Stable unit ID.
     pub id: UnitId,
@@ -2411,7 +2713,7 @@ pub struct UnitObservation {
 }
 
 /// The fog-of-war-safe projection of one city.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct CityObservation {
     /// Stable city ID.
     pub id: CityId,
@@ -2427,6 +2729,8 @@ pub struct CityObservation {
     pub production_stored: i64,
     /// Current production order.
     pub production: Option<ProductionItem>,
+    /// Further orders in completion order.
+    pub waiting: Vec<ProductionItem>,
     /// Districts in stable tile order.
     pub districts: Vec<District>,
     /// Buildings in canonical enum order.
@@ -2508,7 +2812,16 @@ pub enum EventKind {
         /// The spawned unit.
         unit: UnitId,
     },
-    /// A city was founded.
+    /// A city changed hands after a melee occupation order.
+    CityCaptured {
+        /// Transferred city.
+        city: CityId,
+        /// Former owner.
+        previous_owner: PlayerId,
+        /// Capturing seat.
+        owner: PlayerId,
+    },
+    /// A settler established a new city.
     CityFounded {
         /// The new city.
         city: CityId,
@@ -2537,14 +2850,32 @@ pub enum EventKind {
 /// A deterministic command log that can be replayed from its initial state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReplayLog {
+    rules: ReplayRules,
     initial: SimulationState,
     commands: Vec<Command>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReplayRules {
+    LegacyV4,
+    CurrentV5,
+}
+
+impl ReplayRules {
+    fn supports(self, command: &Command) -> bool {
+        self == Self::CurrentV5
+            || !matches!(
+                command,
+                Command::UnitCaptureCity { .. } | Command::CityEnqueueProduction { .. }
+            )
+    }
 }
 
 impl ReplayLog {
     /// Creates an empty replay from an initial state.
     pub fn new(initial: SimulationState) -> Self {
         Self {
+            rules: ReplayRules::CurrentV5,
             initial,
             commands: Vec::new(),
         }
@@ -2553,6 +2884,13 @@ impl ReplayLog {
     /// Returns the starting snapshot for incremental replay verification.
     pub fn initial_state(&self) -> &SimulationState {
         &self.initial
+    }
+
+    /// Opens an incremental playback session with the rules recorded in the log.
+    pub fn playback_session(&self) -> Session {
+        let mut session = Session::from_state(self.initial.clone());
+        session.replay.rules = self.rules;
+        session
     }
 
     /// Returns the recorded commands.
@@ -2564,17 +2902,29 @@ impl ReplayLog {
     pub fn replay(&self) -> Result<SimulationState, DispatchError> {
         let mut state = self.initial.clone();
         for command in &self.commands {
-            state.apply(command)?;
+            state.apply(command, self.rules)?;
         }
         Ok(state)
     }
 
     /// Encodes the initial snapshot and command log.
     pub fn encode(&self) -> Vec<u8> {
-        let initial = self.initial.encode();
+        let initial = self
+            .initial
+            .encode_version(if self.rules == ReplayRules::LegacyV4 {
+                4
+            } else {
+                STATE_FORMAT_VERSION
+            });
         let mut bytes = Vec::new();
         bytes.extend_from_slice(REPLAY_MAGIC);
-        put_u16(&mut bytes, REPLAY_FORMAT_VERSION);
+        put_u16(
+            &mut bytes,
+            match self.rules {
+                ReplayRules::LegacyV4 => 4,
+                ReplayRules::CurrentV5 => REPLAY_FORMAT_VERSION,
+            },
+        );
         put_u32(&mut bytes, initial.len() as u32);
         bytes.extend_from_slice(&initial);
         put_u32(&mut bytes, self.commands.len() as u32);
@@ -2590,15 +2940,35 @@ impl ReplayLog {
     pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
         let mut reader = Reader::new(bytes);
         reader.expect_magic(REPLAY_MAGIC)?;
-        reader.expect_version(REPLAY_FORMAT_VERSION)?;
-        let initial = SimulationState::decode(reader.bytes()?)?;
+        let rules = match reader.u16()? {
+            4 => ReplayRules::LegacyV4,
+            REPLAY_FORMAT_VERSION => ReplayRules::CurrentV5,
+            version => return Err(SerializationError::UnsupportedVersion(version)),
+        };
+        let snapshot = reader.bytes()?;
+        if rules == ReplayRules::LegacyV4 {
+            let mut legacy = Reader::new(snapshot);
+            legacy.expect_magic(STATE_MAGIC)?;
+            legacy.expect_version(4)?;
+        }
+        let initial = SimulationState::decode(snapshot)?;
         let count = reader.count()?;
         let mut commands = Vec::with_capacity(count);
         for _ in 0..count {
-            commands.push(Command::decode(reader.bytes()?)?);
+            let document = reader.bytes()?;
+            let command = Command::decode(document)?;
+            // Four bytes of magic and a two-byte version precede the opcode.
+            if !rules.supports(&command) {
+                return Err(SerializationError::InvalidTag(document[6]));
+            }
+            commands.push(command);
         }
         reader.finish()?;
-        Ok(Self { initial, commands })
+        Ok(Self {
+            initial,
+            commands,
+            rules,
+        })
     }
 }
 
@@ -2666,7 +3036,7 @@ impl Session {
             .next_event_sequence
             .checked_add(1)
             .ok_or(DispatchError::EventSequenceOverflow)?;
-        let kind = self.state.apply(&command)?;
+        let kind = self.state.apply(&command, self.replay.rules)?;
         self.replay.commands.push(command);
         self.events.push(Event {
             sequence: self.next_event_sequence,
@@ -2678,138 +3048,7 @@ impl Session {
 
     /// Projects private seat data and the board within two steps of its cities and units.
     pub fn observe(&self, seat: PlayerId) -> Result<Observation, DispatchError> {
-        if !self.state.contains_player(seat) {
-            return Err(DispatchError::UnknownPlayer(seat));
-        }
-        let units = self
-            .state
-            .units
-            .values()
-            .filter(|unit| unit.owner == Some(seat))
-            .map(|unit| UnitObservation {
-                id: unit.id,
-                kind: unit.kind,
-                tile: unit.tile,
-                hp: unit.hp,
-                movement: unit.movement,
-                xp: unit.xp,
-                promotions: unit.promotions,
-                charges: unit.charges,
-            })
-            .collect();
-        let cities = self
-            .state
-            .cities
-            .values()
-            .filter(|city| city.owner == seat)
-            .map(|city| CityObservation {
-                id: city.id,
-                tile: city.tile,
-                population: city.population,
-                food_stored: city.food_stored,
-                housing: city.housing_capacity(),
-                production_stored: city.production_stored,
-                production: city.production,
-                districts: city.districts().collect(),
-                buildings: city.buildings().collect(),
-            })
-            .collect();
-        let progress = self
-            .state
-            .progress
-            .get(&seat)
-            .ok_or(DispatchError::UnknownPlayer(seat))?;
-        let visible_tiles = self.visible_tiles(seat);
-        let mut occupied: BTreeSet<_> = self.state.units.values().map(|unit| unit.tile).collect();
-        let mut construction_sites = BTreeSet::new();
-        for city in self.state.cities.values() {
-            occupied.insert(city.tile);
-            occupied.extend(city.districts.keys().copied());
-            if let Some(ProductionItem::District { tile, .. }) = city.production {
-                construction_sites.insert(tile);
-            }
-        }
-        let visible_tiles_observation = self
-            .state
-            .map
-            .as_ref()
-            .into_iter()
-            .flat_map(|map| {
-                visible_tiles.iter().filter_map(|tile| {
-                    map.tile(*tile).map(|state| VisibleTileObservation {
-                        tile: *tile,
-                        terrain: state.terrain,
-                        feature: state.feature,
-                        river: state.river,
-                        resource: state.resource,
-                        road: self.state.roads.contains(tile),
-                        occupied: occupied.contains(tile),
-                        district_reserved: construction_sites.contains(tile),
-                        neighbors: map
-                            .topology()
-                            .neighbors(*tile)
-                            .into_iter()
-                            .filter(|neighbor| visible_tiles.contains(neighbor))
-                            .collect(),
-                    })
-                })
-            })
-            .collect();
-        let visible_units = self
-            .state
-            .units
-            .values()
-            .filter(|unit| visible_tiles.contains(&unit.tile))
-            .map(VisibleUnitObservation::from)
-            .collect();
-        let visible_cities = self
-            .state
-            .cities
-            .values()
-            .filter(|city| visible_tiles.contains(&city.tile))
-            .map(|city| VisibleCityObservation {
-                id: city.id,
-                owner: city.owner,
-                tile: city.tile,
-                population: city.population,
-                districts: city
-                    .districts()
-                    .filter_map(|district| {
-                        visible_tiles
-                            .contains(&district.tile)
-                            .then_some(district.tile)
-                    })
-                    .collect(),
-            })
-            .collect();
-        Ok(Observation {
-            seat,
-            turn: self.state.turn,
-            own_marker: self
-                .state
-                .marker(seat)
-                .ok_or(DispatchError::UnknownPlayer(seat))?,
-            units,
-            cities,
-            progress: ProgressObservation {
-                technology_progress: progress.technology_progress,
-                civic_progress: progress.civic_progress,
-                current_technology: progress.current_technology.clone(),
-                current_civic: progress.current_civic.clone(),
-                technologies: progress.technologies.iter().cloned().collect(),
-                civics: progress.civics.iter().cloned().collect(),
-                policy_slots: progress.policy_slots,
-                policies: progress
-                    .policies
-                    .iter()
-                    .map(|(slot, id)| (*slot, id.clone()))
-                    .collect(),
-            },
-            victory: self.state.victories.get(&seat).copied(),
-            visible_tiles: visible_tiles_observation,
-            visible_units,
-            visible_cities,
-        })
+        self.state.observe(seat)
     }
 
     /// Returns the current state hash.
@@ -2821,10 +3060,7 @@ impl Session {
     /// Sessions continued beyond victory can contain multiple declarations.
     /// In that case this returns the lowest seat ID.
     pub fn winner(&self) -> Option<(PlayerId, VictoryKind)> {
-        self.state
-            .victories
-            .first_key_value()
-            .map(|(&seat, &kind)| (seat, kind))
+        self.state.winner()
     }
 
     /// Returns all events in sequence order.
@@ -2845,7 +3081,9 @@ impl Session {
     /// Closes the current replay segment and starts another at the current state.
     /// Consumers can persist each returned segment independently of the live session.
     pub fn take_replay_segment(&mut self) -> ReplayLog {
-        std::mem::replace(&mut self.replay, ReplayLog::new(self.state.clone()))
+        let mut next = ReplayLog::new(self.state.clone());
+        next.rules = self.replay.rules;
+        std::mem::replace(&mut self.replay, next)
     }
 
     /// Counts tiles, seats, units and cities in the canonical world, once each.
@@ -2857,35 +3095,6 @@ impl Session {
             + self.state.markers.len()
             + self.state.units.len()
             + self.state.cities.len()
-    }
-
-    fn visible_tiles(&self, seat: PlayerId) -> BTreeSet<TileId> {
-        let Some(map) = &self.state.map else {
-            return BTreeSet::new();
-        };
-        let sources = self
-            .state
-            .units
-            .values()
-            .filter(|unit| unit.owner == Some(seat))
-            .map(|unit| unit.tile)
-            .chain(
-                self.state
-                    .cities
-                    .values()
-                    .filter(|city| city.owner == seat)
-                    .map(|city| city.tile),
-            );
-        let mut tiles: BTreeSet<_> = sources.collect();
-        let mut frontier: Vec<_> = tiles.iter().copied().collect();
-        for _ in 0..2 {
-            frontier = frontier
-                .into_iter()
-                .flat_map(|tile| map.topology().neighbors(tile))
-                .filter(|tile| tiles.insert(*tile))
-                .collect();
-        }
-        tiles
     }
 }
 
@@ -2954,6 +3163,8 @@ pub enum DispatchError {
     InvalidDistrictTile(TileId),
     /// A production order is invalid.
     InvalidProduction,
+    /// This city already has the maximum number of active and waiting orders.
+    ProductionQueueFull,
     /// A building is already complete.
     BuildingAlreadyBuilt(BuildingKind),
     /// A required district has not been built.
@@ -3021,6 +3232,7 @@ impl fmt::Display for DispatchError {
             Self::InvalidDistrictTile(tile) => {
                 write!(formatter, "invalid district tile {}", tile.index())
             }
+            Self::ProductionQueueFull => formatter.write_str("city production queue is full"),
             Self::InvalidProduction => formatter.write_str("invalid production order"),
             Self::BuildingAlreadyBuilt(building) => {
                 write!(formatter, "building {:?} already exists", building)
@@ -3593,6 +3805,7 @@ fn decode_city(reader: &mut Reader<'_>) -> Result<(CityId, City), SerializationE
         housing,
         production_stored,
         production,
+        waiting: Vec::new(),
         districts,
         buildings,
     };
@@ -3644,6 +3857,9 @@ fn decode_resource(reader: &mut Reader<'_>) -> Result<Option<ResourceKind>, Seri
 }
 
 #[cfg(test)]
+mod stacking_tests;
+
+#[cfg(test)]
 mod tests {
     use histeries_hex::{FlatHex, TileTopology};
     use histeries_rules_core::{CityId, PlayerId};
@@ -3664,7 +3880,7 @@ mod tests {
             registry.find("city.found").unwrap().schema,
             "player:u32,city:u32,unit:u32"
         );
-        assert_eq!(registry.specs().len(), 23);
+        assert_eq!(registry.specs().len(), 25);
         assert!(
             registry
                 .validate(&Command::TurnEnd {
@@ -4758,7 +4974,7 @@ mod tests {
         state.turn = u32::MAX;
         let before = state.clone();
         assert_eq!(
-            state.apply(&Command::TurnEnd { player }),
+            state.apply(&Command::TurnEnd { player }, super::ReplayRules::CurrentV5),
             Err(super::DispatchError::TurnOverflow)
         );
         assert_eq!(state, before);
@@ -4770,10 +4986,15 @@ mod tests {
         let other = PlayerId::new(2);
         let mut state = SimulationState::new([player, other]);
         state.turn = u32::MAX;
-        state.apply(&Command::TurnEnd { player }).unwrap();
+        state
+            .apply(&Command::TurnEnd { player }, super::ReplayRules::CurrentV5)
+            .unwrap();
         let before = state.clone();
         assert_eq!(
-            state.apply(&Command::TurnEnd { player: other }),
+            state.apply(
+                &Command::TurnEnd { player: other },
+                super::ReplayRules::CurrentV5
+            ),
             Err(super::DispatchError::TurnOverflow)
         );
         assert_eq!(state, before);

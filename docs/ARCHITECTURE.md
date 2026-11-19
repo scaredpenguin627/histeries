@@ -61,19 +61,19 @@ The first topology implementation uses stable row-major `TileId` values and keep
 
 ## Save and replay format
 
-ADR-0006 defines the custom binary boundary. State and replay documents carry magic bytes and version 4, while command documents carry version 3. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
+State and replay writers use version 5. Readers accept version 4 and preserve its replay rules. Command documents retain version 3 with additional tags for capture and production enqueue. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
 
 ## Map generation
 
-P1-06 uses `FlatHex` and a named `mapgen` stream to generate terrain, features, river edges, and resources in stable tile-ID order. Editor commands mutate map data only through `sim`, and map serialization rejects incompatible terrain edits and non-canonical tile order.
+The validated TOML map profile selects continent counts, land coverage, and compatible terrain, feature, drainage and resource weights. Generation uses the named map stream and topology neighbors; saves contain the resulting tile state. See ADR-0012.
 
 ## Unit simulation
 
-Units are stored in stable `UnitId` order. Movement uses topology neighbors, terrain costs, roads, and enemy ZOC. Combat uses integer strength, deterministic counterattacks, capped healing, one-time promotions, and explicit barbarian ownership. Unit projections in observations contain only the observing seat's own units.
+Units are stored in stable ID order. A tile can hold one military and one civilian unit of the same owner. Commands check both slots, movement cost and enemy zones of control. Melee and ranged combat, recovery and promotions are deterministic. Visible projections retain both occupants; neutral raiders use the round transition in current replays. See ADR-0015.
 
 ## City simulation
 
-Cities are stored in stable `CityId` order with integer food, housing, production, one queued order, graph-validated districts, and canonical building sets. Founding consumes an owned settler. Turn advancement applies food growth and production in city-ID order. District adjacency is computed through topology neighbors, and produced units use the first sorted free traversable tile adjacent to the city center. Builder units carry three permanent charges, with each road consuming one charge.
+Cities have integer food, housing and production. Each city has one active order and a bounded FIFO of waiting orders; queued construction reserves district sites. Adjacent city centers and districts contribute production through topology neighbors. Builders spend one of three charges on a road. Capture transfers ownership intact and rechecks victory. See ADR-0013 and ADR-0016.
 
 ## Progression and victories
 

@@ -118,6 +118,7 @@ pub(super) fn dispatch_plan(
                     command,
                     Command::UnitMove { .. }
                         | Command::UnitAttack { .. }
+                        | Command::UnitCaptureCity { .. }
                         | Command::UnitHeal { .. }
                         | Command::UnitPromote { .. }
                         | Command::UnitHold { .. }
