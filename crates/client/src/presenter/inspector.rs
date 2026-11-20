@@ -15,7 +15,7 @@ impl Presenter {
         order: &mut Option<Command>,
     ) {
         let view = game.observation();
-        let Some(tile) = self.selected.and_then(|id| visible(view, id)) else {
+        let Some(tile) = self.selected.and_then(|id| visible(view.board(), id)) else {
             ui.label("Select a visible tile on the map.");
             return;
         };

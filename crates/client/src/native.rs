@@ -44,18 +44,25 @@ impl Options {
 }
 
 pub(crate) fn open(path: &Path) -> Result<ClientSession, String> {
-    let bytes = fs::read(path).map_err(|e| format!("Open {}: {e}", path.display()))?;
-    ClientSession::from_save_bytes(&bytes)
+    ClientSession::from_save_bytes(&open_bytes(path)?)
+}
+
+pub(crate) fn open_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    fs::read(path).map_err(|e| format!("Open {}: {e}", path.display()))
 }
 
 pub(crate) fn save(path: &Path, game: &ClientSession) -> Result<(), String> {
+    save_bytes(path, &game.save_bytes())
+}
+
+pub(crate) fn save_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     let stage = || -> std::io::Result<()> {
         let mut file = tempfile::NamedTempFile::new_in(parent)?;
-        file.write_all(&game.save_bytes())?;
+        file.write_all(bytes)?;
         file.as_file().sync_all()?;
         file.persist(path)?;
         Ok(())

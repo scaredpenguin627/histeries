@@ -1,17 +1,18 @@
-//! A seat's chart, selection and orders. Screen-space state lives here alone.
+//! Map rendering, interaction and screen-space state for the game and scenario editor.
 
 mod atlas;
+pub(crate) mod editor;
 mod inspector;
 #[cfg(test)]
 mod tests;
 
 use eframe::egui::{
     self, Align, Align2, Button, Color32, FontId, Frame, Layout, Margin, Panel, RichText,
-    ScrollArea, Sense, Stroke, Ui, Vec2, vec2,
+    ScrollArea, Stroke, Ui, Vec2, vec2,
 };
 use histeries_hex::TileId;
 use histeries_rules_core::{CityId, UnitId};
-use histeries_sim::{Command, DistrictKind, Observation, VisibleTileObservation};
+use histeries_sim::{BoardObservation, Command, DistrictKind, Observation, VisibleTileObservation};
 
 use crate::game::ClientSession;
 use atlas::{Camera, GOLD, INK, PAPER};
@@ -250,7 +251,7 @@ impl Presenter {
         }
         if self
             .selected
-            .is_some_and(|id| visible(game.observation(), id).is_none())
+            .is_some_and(|id| visible(game.observation().board(), id).is_none())
         {
             self.selected = None;
             self.target = None;
@@ -258,58 +259,28 @@ impl Presenter {
     }
 
     fn map(&mut self, ui: &mut Ui, game: &ClientSession, command: &mut Option<Command>) {
-        let (response, painter) = ui.allocate_painter(
-            ui.available_size().max(vec2(1.0, 1.0)),
-            Sense::click_and_drag(),
-        );
-        let rect = response.rect;
-        if !self.initialized && rect.is_positive() {
-            self.camera.fit(game.observation(), rect);
+        let view = game.observation();
+        if !self.initialized && ui.available_rect_before_wrap().is_positive() {
+            self.camera
+                .fit(view.board(), ui.available_rect_before_wrap());
             self.initialized = true;
         }
-        atlas::fog(&painter, rect);
-        let pointer = response
-            .interact_pointer_pos()
-            .or_else(|| response.hover_pos());
-        if let Some(at) = pointer {
-            let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-            self.camera
-                .zoom((scroll * 0.003).exp() * pinch, at - rect.center());
-        }
-        if response.dragged() {
-            self.camera.center -= response.drag_delta() / self.camera.radius;
-        }
+        let (response, painter, hovered) = atlas::surface(ui, view.board(), &mut self.camera);
+        let rect = response.rect;
+        let radius = self.camera.radius;
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.target = None;
         }
-        let radius = self.camera.radius;
-        let view = game.observation();
-        let mut hovered = None;
         let locate = |id| {
             game.embedding(id)
                 .map(|p| self.camera.project(p, rect))
                 .filter(|center| rect.expand(radius).contains(*center))
         };
-        for tile in view.visible_tiles() {
-            let center = self.camera.project(tile.embedding, rect);
-            if rect.expand(radius).contains(center) {
-                atlas::ground(&painter, tile, center, radius);
-                if pointer.is_some_and(|at| atlas::contains(center, radius, at)) {
-                    hovered = Some(tile);
-                }
-            }
-        }
-        for tile in view.visible_tiles() {
-            let center = self.camera.project(tile.embedding, rect);
-            if rect.expand(radius).contains(center) {
-                atlas::river(&painter, tile, center, radius);
-            }
-        }
         if let Some(center) = self.selected.and_then(locate) {
             atlas::outline(&painter, center, radius, GOLD);
         }
-        atlas::occupants(&painter, rect, view, &self.camera);
-        if let Some(tile) = hovered {
+        atlas::occupants(&painter, rect, view.board(), &self.camera, view.seat());
+        if let Some(tile) = hovered.and_then(|id| visible(view.board(), id)) {
             let center = self.camera.project(tile.embedding, rect);
             atlas::outline(&painter, center, radius * 0.94, PAPER);
             if response.clicked() {
@@ -364,7 +335,7 @@ fn home(view: &Observation) -> Option<TileId> {
         .or_else(|| view.visible_tiles().first().map(|t| t.tile))
 }
 
-fn visible(view: &Observation, id: TileId) -> Option<&VisibleTileObservation> {
+fn visible(view: &BoardObservation, id: TileId) -> Option<&VisibleTileObservation> {
     let tiles = view.visible_tiles();
     tiles
         .binary_search_by_key(&id, |tile| tile.tile)

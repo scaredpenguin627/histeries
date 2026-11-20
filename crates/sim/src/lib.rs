@@ -21,6 +21,8 @@ pub use match_host::MatchHost;
 #[cfg(test)]
 mod production_tests;
 pub mod progression;
+mod scenario;
+pub use scenario::{ScenarioBrush, ScenarioDraft};
 mod session_view;
 pub use session_view::{MatchObservation, MatchView, Viewpoint};
 pub mod unit;
@@ -2473,15 +2475,13 @@ impl SimulationState {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct Observation {
     seat: PlayerId,
-    turn: u32,
     own_marker: i64,
     units: Vec<UnitObservation>,
     cities: Vec<CityObservation>,
     progress: ProgressObservation,
     victory: Option<VictoryKind>,
-    visible_tiles: Vec<VisibleTileObservation>,
-    visible_units: Vec<VisibleUnitObservation>,
-    visible_cities: Vec<VisibleCityObservation>,
+    #[serde(flatten)]
+    board: BoardObservation,
 }
 
 impl Observation {
@@ -2492,7 +2492,7 @@ impl Observation {
 
     /// Returns the observed turn.
     pub const fn turn(&self) -> u32 {
-        self.turn
+        self.board.turn
     }
 
     /// Returns the marker visible to this seat.
@@ -2518,6 +2518,42 @@ impl Observation {
     /// Returns the observing seat's victory, if one has been reached.
     pub const fn victory(&self) -> Option<VictoryKind> {
         self.victory
+    }
+
+    /// Returns the public board data filtered for this seat.
+    pub const fn board(&self) -> &BoardObservation {
+        &self.board
+    }
+
+    /// Returns visible map tiles with terrain and graph neighbors.
+    pub fn visible_tiles(&self) -> &[VisibleTileObservation] {
+        &self.board.visible_tiles
+    }
+
+    /// Returns units on visible tiles, including public owner identity.
+    pub fn visible_units(&self) -> &[VisibleUnitObservation] {
+        &self.board.visible_units
+    }
+
+    /// Returns cities on visible tiles, including public owner identity.
+    pub fn visible_cities(&self) -> &[VisibleCityObservation] {
+        &self.board.visible_cities
+    }
+}
+
+/// Projected map, cities and units without private player state.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+pub struct BoardObservation {
+    turn: u32,
+    visible_tiles: Vec<VisibleTileObservation>,
+    visible_units: Vec<VisibleUnitObservation>,
+    visible_cities: Vec<VisibleCityObservation>,
+}
+
+impl BoardObservation {
+    /// Returns the projected round.
+    pub const fn turn(&self) -> u32 {
+        self.turn
     }
 
     /// Returns visible map tiles with terrain and graph neighbors.

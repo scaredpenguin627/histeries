@@ -128,7 +128,7 @@ fn targeted_move_preserves_an_invalid_order_for_retry_and_selects_its_destinatio
     let mut game = ClientSession::new(7).unwrap();
     let first = game.observation();
     let unit = first.units()[0];
-    let origin = visible(first, unit.tile).unwrap();
+    let origin = visible(first.board(), unit.tile).unwrap();
     let command = |destination| Command::UnitMove {
         player: first.seat(),
         unit: unit.id,
@@ -192,7 +192,7 @@ fn first_frame_centers_the_visible_footprint_in_the_chart() {
     let view = game.observation();
     let viewport = Rect::from_min_size(pos2(12.0, 45.0), vec2(860.0, 650.0));
     let mut camera = Camera::default();
-    camera.fit(view, viewport);
+    camera.fit(view.board(), viewport);
     let mut centers = Rect::NOTHING;
     for tile in view.visible_tiles() {
         centers.extend_with(camera.project(tile.embedding, viewport));

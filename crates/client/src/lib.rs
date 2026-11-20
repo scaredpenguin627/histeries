@@ -5,6 +5,8 @@
 #[cfg(not(target_env = "ohos"))]
 mod app;
 #[cfg(not(target_env = "ohos"))]
+mod editor;
+#[cfg(not(target_env = "ohos"))]
 pub use app::GameApp;
 #[cfg(not(target_env = "ohos"))]
 mod font;

@@ -105,6 +105,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn editor_and_player_tokens_receive_the_same_fogged_flat_json_observation() {
+        let draft = histeries_sim::ScenarioDraft::blank(4, 3, 2).unwrap();
+        assert_eq!(draft.board().visible_tiles().len(), 12);
+        let seat = draft.seats()[0];
+        let session = Session::from_save_bytes(draft.bytes()).unwrap();
+        let value = wire::observation(&session.observe(seat).unwrap());
+        let expected = [
+            "cities",
+            "own_marker",
+            "progress",
+            "seat",
+            "turn",
+            "units",
+            "victory",
+            "visible_cities",
+            "visible_tiles",
+            "visible_units",
+        ];
+        let mut keys: Vec<_> = value
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(keys, expected);
+        let game = Game::new(session, vec![]);
+        let player = game.observe(Role::Seat(seat)).unwrap();
+        assert_eq!(game.observe(Role::Editor(seat)).unwrap(), player);
+        assert_eq!(player["visible_tiles"], json!([]));
+    }
+
+    #[test]
     fn replay_exposes_only_the_authorized_observation_and_public_winner() {
         let [one, two] = [9, 27].map(PlayerId::new);
         let session = Session::new([one, two]);
