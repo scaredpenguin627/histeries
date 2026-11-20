@@ -10,6 +10,10 @@ The final native-client fast gate passed all 140 tests in 152.659 seconds locall
 
 The hosted fast gate on editor source `9e3ed6cd5c16` passed with restored Cargo caches in 138.332 s on Linux, 212.949 s on macOS and 238.562 s on Windows MSVC. All 155 workspace tests, 34 parity checks and 1,200 round hashes passed. The three platforms produced matching hashes. On the local Windows GNU machine, a cached run with a release rebuild passed in 627.530 s. Two empty-target runs completed every functional check and failed the 900-second limit at 970.775 s and 990.230 s. [Hosted fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/44754110314) · [Scenario editor report](sessions/2026-11-19-phase3-editor.md)
 
+### P3-03 editor packages
+
+The implementation commit immediately before this measurement has Git tree `a6ea81f80693224d205588e3cb4d55f519f9d64e`. On Windows GNU it passed the warm fast gate in 59.101 seconds. All 175 workspace tests and 34 parity checks passed, with 1,200 matching round hashes across six fixtures. Thirteen ABI tests also passed on wasm32. Coverage included CLI and MCP package invocation, four native manager tests and single-step undo and redo of a two-command package. An earlier concurrent native test rebuild exceeded the 900-second local budget at 2,576.511 seconds. [Editor package report](sessions/2026-11-19-phase3-extensions.md)
+
 ## Phase 2 measurements · 2026-11-19
 
 Three-seat stdio planning matched the expected unit positions and hit points on live advancement, save/resume and replay. [Regression results](sessions/2026-11-19-stdio-bot-snapshot.md)

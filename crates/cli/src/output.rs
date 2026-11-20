@@ -99,24 +99,29 @@ impl Drop for Staged {
     }
 }
 
-pub(crate) fn write_session(
+pub(crate) fn write_session<'a>(
     session: &Session,
     output: &str,
     replay_output: Option<&str>,
     input: Option<&str>,
-    commands: Option<&str>,
+    commands: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), String> {
     let resolve = |name: &str| destination(name).map_err(|e| format!("{name}: {e}"));
     let state = resolve(output)?;
     let replay = replay_output.map(resolve).transpose()?;
     let input = input.map(resolve).transpose()?;
-    let commands = commands.map(resolve).transpose()?;
     if replay.as_ref().is_some_and(|r| {
         same_destination(r, &state) || input.as_ref().is_some_and(|i| same_destination(i, r))
-    }) || commands.as_ref().is_some_and(|c| {
-        same_destination(c, &state) || replay.as_ref().is_some_and(|r| same_destination(r, c))
     }) {
         return Err("save, replay and command files require separate destinations".into());
+    }
+    for name in commands {
+        let path = resolve(name)?;
+        if same_destination(&path, &state)
+            || replay.as_ref().is_some_and(|r| same_destination(r, &path))
+        {
+            return Err("save, replay and command files require separate destinations".into());
+        }
     }
     let staged = Staged::prepare(&state, replay.as_deref(), |f| {
         f.write_all(&session.state_snapshot().encode())

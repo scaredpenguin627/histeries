@@ -29,6 +29,13 @@ impl Editor {
         self.draft.bytes()
     }
 
+    pub(crate) fn apply_package(
+        &mut self,
+        package: &histeries_sim::extensions::Package,
+    ) -> Result<usize, String> {
+        self.draft.apply_package(package, self.presenter.owner())
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn set_source(&mut self, name: String) {
         self.presenter.set_source(name);

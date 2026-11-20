@@ -2369,6 +2369,39 @@ DEALINGS IN THE SOFTWARE.
 
 ## MIT
 
+- ron 0.12.3
+
+````text
+Copyright (c) 2017 RON developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+````
+
+## MIT
+
 - redox_syscall 0.4.1
 - redox_syscall 0.5.18
 - redox_syscall 0.9.5
@@ -4623,6 +4656,11 @@ SOFTWARE.
 - r-efi 5.3.0
 - r-efi 6.0.0
 - type-map 0.5.1
+- wasmi 2.0.2
+- wasmi_collections 2.0.2
+- wasmi_core 2.0.2
+- wasmi_ir 2.0.2
+- wasmparser 0.228.0
 - windows-collections 0.3.2
 - windows-core 0.62.2
 - windows-future 0.3.2
@@ -4951,10 +4989,12 @@ DEALINGS IN THE SOFTWARE.
 - concurrent-queue 2.5.0
 - dhat 0.3.3
 - dyn-clone 1.0.20
+- enumn 0.1.14
 - fastrand 2.5.0
 - hermit-abi 0.5.3
 - itoa 1.0.19
 - lazy_static 1.5.1
+- leb128fmt 0.1.0
 - linux-raw-sys 0.12.1
 - linux-raw-sys 0.4.15
 - num_enum 0.7.6
@@ -4991,9 +5031,13 @@ DEALINGS IN THE SOFTWARE.
 - thiserror-impl 2.0.21
 - thiserror 1.0.69
 - thiserror 2.0.21
+- typeid 1.0.3
 - unicode-ident 1.0.27
 - wasi 0.11.1+wasi-snapshot-preview1
 - wasip2 1.0.4+wasi-0.2.12
+- wasm-encoder 0.263.0
+- wast 263.0.0
+- wat 1.263.0
 - wit-bindgen 0.57.1
 - x11-dl 2.21.0
 - zmij 1.0.23
@@ -5147,6 +5191,34 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+````
+
+## MIT
+
+- spin 0.9.9
+
+````text
+The MIT License (MIT)
+
+Copyright (c) 2014 Mathijs van de Nes
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ````
 
 ## MIT

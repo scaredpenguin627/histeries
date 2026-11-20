@@ -36,6 +36,10 @@ impl EditorPresenter {
         }
     }
 
+    pub(crate) fn owner(&self) -> PlayerId {
+        self.owner
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn set_source(&mut self, name: String) {
         self.source = name;

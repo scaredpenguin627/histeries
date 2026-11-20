@@ -11,3 +11,7 @@ Phase 1 uses the headless-game scope and acceptance conditions in section 9 of [
 | Seat authority, transports and replay access | [MCP user guide](../docs/mcp.md), [ADR-0014](../docs/adr/0014-mcp-session.md) |
 
 The [Phase 1 closure audit](../docs/sessions/2026-11-19-phase1-completion.md) maps the remaining game scope to code and tests.
+
+## Phase 3 editor packages
+
+- `designed` An authenticated editor can call `apply_editor_package` in addition to the five core MCP tools. The request carries the TOML manifest and Wasm bytes. The host binds the proposed commands to the editor's seat and commits them atomically. Only editor credentials can discover or use this tool and its package-reference resource. [ADR-0020](../docs/adr/0020-editor-extension-abi.md)

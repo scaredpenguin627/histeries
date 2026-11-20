@@ -238,6 +238,36 @@ fn command_map(args: &[String]) -> Result<(), String> {
 }
 
 fn command_editor(args: &[String]) -> Result<(), String> {
+    #[cfg(not(target_family = "wasm"))]
+    if args.get(1).is_some_and(|action| action == "package") {
+        validate_flags(
+            args,
+            &["--package", "--player", "--output", "--replay-output"],
+            2,
+        )?;
+        let input = positional(args, 0, "state path")?;
+        let output = flag_string(args, "--output")?.unwrap_or_else(|| input.clone());
+        let directory = flag_string(args, "--package")?.ok_or("--package DIRECTORY is required")?;
+        let dir = std::path::Path::new(&directory);
+        let package = histeries_sim::extensions::Package::load(dir)?;
+        let seat = PlayerId::new(flag_u32(args, "--player")?.ok_or("--player is required")?);
+        let mut host = histeries_sim::MatchHost::new(Session::from_state(read_state(&input)?));
+        let count = package.apply(&mut host, seat)?;
+        let manifest = dir.join("manifest.toml");
+        let module = dir.join("plugin.wasm");
+        output::write_session(
+            host.session(),
+            &output,
+            flag_string(args, "--replay-output")?.as_deref(),
+            Some(&input),
+            [
+                manifest.to_str().ok_or("invalid manifest path")?,
+                module.to_str().ok_or("invalid module path")?,
+            ],
+        )?;
+        println!("applied {} ({count} commands)", package.id());
+        return Ok(());
+    }
     if args.get(1).is_some_and(|action| action == "apply") {
         validate_flags(args, &["--commands", "--output", "--replay-output"], 2)?;
         let input = positional(args, 0, "state path")?;
@@ -258,7 +288,7 @@ fn command_editor(args: &[String]) -> Result<(), String> {
             &output,
             flag_string(args, "--replay-output")?.as_deref(),
             Some(&input),
-            Some(&file),
+            Some(file.as_str()),
         );
     }
     validate_flags(
@@ -488,7 +518,7 @@ fn seed_bytes(seed: u64) -> [u8; 32] {
 }
 
 fn usage() -> String {
-    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random|v1] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N] [--listen 127.0.0.1:PORT]\n  map STATE\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
+    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random|v1] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N] [--listen 127.0.0.1:PORT]\n  map STATE\n  editor STATE package --package DIRECTORY --player N [--output PATH] [--replay-output PATH]\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
 }
 
 #[cfg(test)]
@@ -530,6 +560,36 @@ mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         env::temp_dir().join(format!("histeries-cli-{name}-{}.bin", std::process::id()))
+    }
+
+    #[cfg(not(target_family = "wasm"))]
+    #[test]
+    fn editor_package_persists_the_same_commands_in_save_and_replay() {
+        let save = temp_path("package-save");
+        let replay = temp_path("package-replay");
+        let map = MapState::blank(FlatHex::new(3, 2, false, false).unwrap());
+        let game = Session::with_map([PlayerId::new(1), PlayerId::new(2)], map);
+        fs::write(&save, game.save_bytes()).unwrap();
+        let package =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/extensions/woodland");
+        run(vec![
+            "editor".into(),
+            save.to_str().unwrap().into(),
+            "package".into(),
+            "--package".into(),
+            package.to_str().unwrap().into(),
+            "--player".into(),
+            "1".into(),
+            "--replay-output".into(),
+            replay.to_str().unwrap().into(),
+        ])
+        .unwrap();
+        let result = Session::from_save_bytes(&fs::read(&save).unwrap()).unwrap();
+        let log = histeries_sim::ReplayLog::decode(&fs::read(&replay).unwrap()).unwrap();
+        assert_eq!(log.commands()[0].id(), "editor.set_feature");
+        assert_eq!(log.replay().unwrap().state_hash(), result.state_hash());
+        fs::remove_file(save).unwrap();
+        fs::remove_file(replay).unwrap();
     }
 
     #[test]

@@ -33,7 +33,16 @@ use crate::{
     wire,
 };
 
-const RESOURCES: [(&str, &str, &str, &str); 3] = [
+type ResourceSpec = (&'static str, &'static str, &'static str, &'static str);
+
+const EDITOR_PACKAGE_DOCS: ResourceSpec = (
+    "histeries://docs/editor-packages",
+    "Editor package ABI",
+    "text/markdown",
+    include_str!("../../../docs/editor-packages.md"),
+);
+
+const RESOURCES: [ResourceSpec; 3] = [
     (
         "histeries://ruleset/base",
         "Base ruleset",
@@ -75,6 +84,11 @@ fn tool(
 }
 
 impl Handler {
+    fn resources(&self) -> impl Iterator<Item = ResourceSpec> {
+        let editor_docs = matches!(self.role, Role::Editor(_)).then_some(EDITOR_PACKAGE_DOCS);
+        RESOURCES.into_iter().chain(editor_docs)
+    }
+
     fn tools(&self) -> Vec<Tool> {
         let mut tools = vec![
             tool(
@@ -102,12 +116,33 @@ impl Handler {
                 tool("advance_turn","End your seat's current turn and return the new observation.",json!({}),&[]),
             ]);
         }
+        if matches!(self.role, Role::Editor(_)) {
+            use histeries_sim::extensions::{MAX_MANIFEST_BYTES, MAX_MODULE_BYTES};
+            tools.push(tool(
+                "apply_editor_package",
+                "Run one ABI v1 editor package atomically as this editor seat.",
+                json!({"manifest":{"type":"string","description":"TOML text encoded in at most 4096 UTF-8 bytes.","maxLength":MAX_MANIFEST_BYTES},
+                    "wasm_base64":{"type":"string","maxLength":MAX_MODULE_BYTES.div_ceil(3)*4}}),
+                &["manifest", "wasm_base64"],
+            ));
+        }
         tools
     }
 
     fn call(&self, name: &str, mut args: JsonObject) -> Result<Value, String> {
         let mut game = self.game.lock().map_err(|_| "session unavailable")?;
         match name {
+            "apply_editor_package" if args.len() == 2 => {
+                let manifest = args
+                    .get("manifest")
+                    .and_then(Value::as_str)
+                    .ok_or("expected manifest text")?;
+                let module = args
+                    .get("wasm_base64")
+                    .and_then(Value::as_str)
+                    .ok_or("expected base64 Wasm")?;
+                game.apply_package(self.role, manifest, module)
+            }
             "list_commands" if args.is_empty() => Ok(json!({"commands": match self.role {
                 Role::Spectator => json!([]),
                 role => wire::commands(matches!(role, Role::Editor(_))),
@@ -179,9 +214,8 @@ impl ServerHandler for Handler {
         _: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         Ok(ListResourcesResult::with_all_items(
-            RESOURCES
-                .iter()
-                .map(|&(uri, name, mime, _)| Resource::new(uri, name).with_mime_type(mime))
+            self.resources()
+                .map(|(uri, name, mime, _)| Resource::new(uri, name).with_mime_type(mime))
                 .collect(),
         ))
     }
@@ -191,8 +225,8 @@ impl ServerHandler for Handler {
         req: ReadResourceRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        let &(uri, _, mime, body) = RESOURCES
-            .iter()
+        let (uri, _, mime, body) = self
+            .resources()
             .find(|r| r.0 == req.uri)
             .ok_or_else(|| ErrorData::resource_not_found("unknown resource", None))?;
         let content = ResourceContents::TextResourceContents {
@@ -348,5 +382,68 @@ pub fn serve(session: Session, listen: Option<SocketAddr>) -> Result<(), String>
                 .map_err(|e| e.to_string())?;
             Ok(())
         })
+    }
+}
+
+#[cfg(test)]
+mod package_tests {
+    use super::*;
+    use base64::prelude::*;
+    use histeries_hex::FlatHex;
+    use histeries_rules_core::PlayerId;
+    use histeries_sim::{MapState, Session};
+
+    #[test]
+    fn package_tool_requires_editor_and_accepts_only_inline_bytes() {
+        let seat = PlayerId::new(1);
+        let map = MapState::blank(FlatHex::new(3, 2, false, false).unwrap());
+        let session = Session::with_map([seat, PlayerId::new(2)], map);
+        let game = Arc::new(Mutex::new(Game::new(session, vec![])));
+        let manifest = include_str!("../../../data/extensions/woodland/manifest.toml");
+        let wasm = BASE64_STANDARD.encode(include_bytes!(
+            "../../../data/extensions/woodland/plugin.wasm"
+        ));
+        let args = json!({"manifest":manifest, "wasm_base64":wasm})
+            .as_object()
+            .unwrap()
+            .clone();
+        for role in [Role::Seat(seat), Role::Spectator, Role::Editor(seat)] {
+            let handler = Handler {
+                role,
+                game: game.clone(),
+            };
+            let authorized = matches!(role, Role::Editor(_));
+            assert_eq!(
+                handler
+                    .resources()
+                    .any(|resource| resource.0 == EDITOR_PACKAGE_DOCS.0),
+                authorized
+            );
+            assert_eq!(
+                handler
+                    .tools()
+                    .iter()
+                    .any(|tool| tool.name == "apply_editor_package"),
+                authorized
+            );
+            let result = handler.call("apply_editor_package", args.clone());
+            if authorized {
+                assert_eq!(result.unwrap(), json!({"id":"woodland","commands":1}));
+                let paths = json!({"path":"manifest.toml","module":"plugin.wasm"});
+                assert!(
+                    handler
+                        .call("apply_editor_package", paths.as_object().unwrap().clone())
+                        .is_err()
+                );
+                let large = json!({"manifest":manifest,"wasm_base64":"A".repeat(90000)});
+                assert!(
+                    handler
+                        .call("apply_editor_package", large.as_object().unwrap().clone())
+                        .is_err()
+                );
+            } else {
+                assert!(result.unwrap_err().contains("credential"));
+            }
+        }
     }
 }

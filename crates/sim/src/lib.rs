@@ -13,6 +13,8 @@ use histeries_rules_core::{CityId, PlayerId, UnitId};
 pub mod city;
 #[cfg(test)]
 mod conquest_tests;
+#[cfg(any(test, feature = "extensions"))]
+pub mod extensions;
 mod frontier;
 pub use frontier::{frontier, frontier_duel};
 pub mod map;

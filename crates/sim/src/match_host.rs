@@ -75,6 +75,16 @@ impl MatchHost {
         self.dispatch_as_editor(seat, command)
     }
 
+    /// Returns the map only while the issuing seat can edit this turn.
+    pub(crate) fn editable_map(&self, player: PlayerId) -> Result<&crate::MapState, String> {
+        if self.session.winner().is_some() || self.session.has_ended_turn(player) {
+            return Err("this seat cannot edit the current turn".into());
+        }
+        self.session
+            .editor_map(player)
+            .map_err(|error| error.to_string())
+    }
+
     /// Applies an editor batch atomically. Invalid commands and invalid resulting saves
     /// discard the entire candidate, including its events, order counts and replay.
     pub(crate) fn dispatch_editor_batch(
@@ -82,7 +92,7 @@ impl MatchHost {
         player: PlayerId,
         commands: impl IntoIterator<Item = Command>,
     ) -> Result<Vec<u8>, String> {
-        self.session.editor_map(player).map_err(|e| e.to_string())?;
+        self.editable_map(player)?;
         let mut staged = self.clone();
         for command in commands {
             staged.dispatch_as_editor(player, command)?;

@@ -1,0 +1,6 @@
+# Original Histeries sample package. SPDX-License-Identifier: MIT OR Apache-2.0
+abi = 1
+id = "woodland"
+name = "Plant a woodland"
+version = "1.0.0"
+description = "Plant a forest on the first open plains tile in map order."

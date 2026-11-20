@@ -89,6 +89,28 @@ impl Game {
         self.observe(role)
     }
 
+    pub(crate) fn apply_package(
+        &mut self,
+        role: Role,
+        manifest: &str,
+        module: &str,
+    ) -> Result<Value, String> {
+        use base64::prelude::*;
+        use histeries_sim::extensions::{MAX_MANIFEST_BYTES, MAX_MODULE_BYTES, Package};
+        let Role::Editor(seat) = role else {
+            return Err("an editor credential is required".into());
+        };
+        if manifest.len() > MAX_MANIFEST_BYTES || module.len() > MAX_MODULE_BYTES.div_ceil(3) * 4 {
+            return Err("package exceeds size limit".into());
+        }
+        let wasm = BASE64_STANDARD
+            .decode(module)
+            .map_err(|_| "invalid Wasm base64")?;
+        let package = Package::from_bytes(manifest.as_bytes(), &wasm)?;
+        let commands = package.apply(&mut self.host, seat)?;
+        Ok(json!({"id":package.id(),"commands":commands}))
+    }
+
     pub(crate) fn resume(&mut self, role: Role) -> Result<(), String> {
         if role
             .player()
