@@ -14,6 +14,10 @@ The hosted fast gate on editor source `9e3ed6cd5c16` passed with restored Cargo 
 
 The implementation commit immediately before this measurement has Git tree `a6ea81f80693224d205588e3cb4d55f519f9d64e`. On Windows GNU it passed the warm fast gate in 59.101 seconds. All 175 workspace tests and 34 parity checks passed, with 1,200 matching round hashes across six fixtures. Thirteen ABI tests also passed on wasm32. Coverage included CLI and MCP package invocation, four native manager tests and single-step undo and redo of a two-command package. An earlier concurrent native test rebuild exceeded the 900-second local budget at 2,576.511 seconds. [Editor package report](sessions/2026-11-19-phase3-extensions.md)
 
+### P3-04 browser client
+
+On Linux, Chrome 157.0.8103.38 reported Google SwiftShader and rendered the game and Woodland editor to 1,200 × 657 frames. It restored a turn-1 game and a separate turn-2 scenario after page reloads. Importing Woodland through the browser file picker and applying it added a forest to tile 1 in the 108-tile draft. All three browser saves matched their native references byte for byte. The release WebAssembly was 9,824,100 bytes. An earlier Windows D3D11 run exercised the same play, save, reopen and package operations. The Windows GNU fast gate passed all 176 tests and 34 parity checks. The integrated rebuild exceeded the 900-second budget at 952.387 seconds. Its warm repeat passed in 79.325 seconds. [Browser acceptance report](sessions/2026-11-20-phase3-web.md)
+
 ## Phase 2 measurements · 2026-11-19
 
 Three-seat stdio planning matched the expected unit positions and hit points on live advancement, save/resume and replay. [Regression results](sessions/2026-11-19-stdio-bot-snapshot.md)

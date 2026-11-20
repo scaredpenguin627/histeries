@@ -21,3 +21,8 @@ mod presenter;
 
 #[cfg(not(any(target_env = "ohos", target_arch = "wasm32")))]
 pub use native::run;
+
+#[cfg(target_arch = "wasm32")]
+mod web;
+#[cfg(target_arch = "wasm32")]
+mod web_storage;

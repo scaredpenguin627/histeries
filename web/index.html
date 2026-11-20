@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#13252c">
+<title>Histeries</title>
+<style>
+  html,body,canvas { width:100%;height:100%;margin:0;display:block;overflow:hidden }
+  body { background:#13252c;color:#f4e7c8;font:1rem system-ui,sans-serif }
+  canvas { touch-action:none }
+  #status { position:absolute;inset:0;display:grid;place-content:center;padding:2rem;white-space:pre-wrap }
+  #status[hidden] { display:none }
+</style>
+<body>
+<canvas id="game" aria-label="Histeries strategy map" tabindex="0"></canvas>
+<div id="status" role="status">Opening Histeries…</div>
+<script type="module">
+  const canvas = document.getElementById("game");
+  const status = document.getElementById("status");
+  try {
+    const { default: init, start_game } = await import("./pkg/histeries_client.js");
+    await init();
+    const handle = await start_game(canvas, 7n);
+    status.hidden = true;
+    canvas.focus();
+    const monitor = window.setInterval(() => {
+      const message = handle.panic_message();
+      if (message) {
+        window.clearInterval(monitor);
+        status.setAttribute("role", "alert");
+        status.textContent = "Histeries stopped. Reload the page to reopen your last save.\n\n" + message;
+        status.hidden = false;
+      }
+    }, 1000);
+    window.addEventListener("pagehide", event => {
+      if (!event.persisted) { window.clearInterval(monitor); handle.shutdown(); handle.free(); }
+    });
+  } catch (error) {
+    status.setAttribute("role", "alert");
+    status.textContent = "Histeries could not start. Open this page in a WebGPU-capable browser over HTTPS or localhost.\n\n" + String(error);
+  }
+</script>
+</body>
+</html>

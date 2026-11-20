@@ -40,6 +40,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends xvfb xauth libxkbcommon-x11-0 mesa-vulkan-drivers
           cargo build --locked -p histeries-client --bin histeries-client
           timeout 100s xvfb-run -a -s "-screen 0 1280x1024x24" target/debug/histeries-client --seed 7 --capture target/gates/client.png
+      - name: Generate native reference saves for browser parity
+        if: runner.os == 'Linux'
+        run: cargo run --locked -p histeries-client --example browser_reference -- target/gates/browser-reference
       - name: Attach per-round hashes and measurements
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,6 +53,7 @@ jobs:
             target/gates/ci-fast.json
             target/gates/parity.json
             target/gates/client.png
+            target/gates/browser-reference/
       - name: Measure paired games against greedy
         if: runner.os == 'Linux'
         shell: bash
@@ -73,8 +77,44 @@ jobs:
             phase2-v1-tournament.txt
           if-no-files-found: ignore
 
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+          targets: wasm32-unknown-unknown
+      - name: Install pinned WebAssembly bindings generator
+        shell: bash
+        run: |
+          curl --fail --max-time 120 --location --retry 3 -o "$RUNNER_TEMP/bindgen.tgz" https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl.tar.gz
+          echo "9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f  $RUNNER_TEMP/bindgen.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/bindgen.tgz" -C "$RUNNER_TEMP" wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm-bindgen
+          echo "WASM_BINDGEN=$RUNNER_TEMP/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm-bindgen" >> "$GITHUB_ENV"
+      - name: Install screenshot verification tool
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends imagemagick
+      - run: cargo xtask web-build
+      - name: Play, save and reopen a browser turn through WebGPU
+        run: bash scripts/test-web.sh target/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: histeries-web
+          path: target/web/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-test
+          path: |
+            target/gates/web*.png
+            target/gates/chromedriver.log
+            target/gates/web-server.log
+            target/gates/browser-observed/
+            target/gates/browser-runtime.json
+
   compare-hashes:
-    needs: fast
+    needs: [fast, web]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,3 +123,12 @@ jobs:
           pattern: fast-*
           path: traces
       - run: cargo xtask compare-fast traces/fast-Linux/fast.jsonl traces/fast-macOS/fast.jsonl traces/fast-Windows/fast.jsonl
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-test
+          path: traces/web-test
+      - name: Compare browser and native game and editor saves byte for byte
+        run: |
+          for save in turn-1 before-woodland after-woodland; do
+            cmp "traces/fast-Linux/browser-reference/$save.hst" "traces/web-test/browser-observed/$save.hst"
+          done
