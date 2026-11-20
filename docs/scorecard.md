@@ -12,7 +12,7 @@ The hosted fast gate on editor source `9e3ed6cd5c16` passed with restored Cargo 
 
 ### P3-03 editor packages
 
-On Windows GNU, `cargo xtask ci-fast` passed on revision `5c159e0645ed` in 26.105 seconds from warm caches. All 167 tests and 34 parity checks passed, and six games matched all 1,200 round hashes at one and eight threads. Package coverage included ten interpreter tests, one CLI test, one MCP test and four native manager tests. The preceding native test rebuild took 2,576.511 seconds and exceeded the 900-second budget. [Editor package report](sessions/2026-11-19-phase3-extensions.md)
+The implementation commit immediately before this measurement has Git tree `a6ea81f80693224d205588e3cb4d55f519f9d64e`. On Windows GNU it passed the warm fast gate in 59.101 seconds. All 175 workspace tests and 34 parity checks passed, with 1,200 matching round hashes across six fixtures. Thirteen ABI tests also passed on wasm32. Coverage included CLI and MCP package invocation, four native manager tests and single-step undo and redo of a two-command package. An earlier concurrent native test rebuild exceeded the 900-second local budget at 2,576.511 seconds. [Editor package report](sessions/2026-11-19-phase3-extensions.md)
 
 ## Phase 2 measurements · 2026-11-19
 
