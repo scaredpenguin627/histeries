@@ -1,98 +1,11 @@
-//! Opening positions for a playable generated map, without editing its terrain.
-use std::collections::BTreeSet;
-
-use histeries_hex::{TileId, TileTopology};
-use histeries_rules_core::{PlayerId, UnitId};
-use histeries_sim::{Command, MapState, Session, Terrain, Unit, UnitKind};
-
-pub(super) fn frontier(map: MapState, players: u32) -> Result<Session, String> {
-    let topology = map.topology();
-    let land: Vec<_> = map
-        .tiles()
-        .filter(|(_, tile)| {
-            !matches!(tile.terrain, Terrain::Coast | Terrain::Ocean)
-                && Unit::movement_cost(tile.terrain, false).is_some()
-        })
-        .map(|(id, _)| id)
-        .collect();
-    if land.len() < players as usize {
-        return Err(
-            "not enough traversable land for these seats; choose another map or --setup empty"
-                .into(),
-        );
-    }
-    let mut centers_in_seat_order = Vec::new();
-    let mut centers = BTreeSet::<TileId>::new();
-    let mut session = Session::with_map((1..=players).map(PlayerId::new), map);
-    for seat in 1..=players {
-        let start = *land
-            .iter()
-            .filter(|id| !centers.contains(id))
-            .max_by_key(|&&id| {
-                (
-                    centers
-                        .iter()
-                        .map(|&other| topology.distance(id, other))
-                        .min()
-                        .unwrap_or(0),
-                    std::cmp::Reverse(id),
-                )
-            })
-            .expect("sufficient distinct land tiles");
-        centers.insert(start);
-        centers_in_seat_order.push(start);
-        let player = PlayerId::new(seat);
-        let unit = UnitId::new(2 * seat);
-        session
-            .dispatch(Command::UnitSpawn {
-                player,
-                unit,
-                kind: UnitKind::Settler,
-                tile: start,
-            })
-            .map_err(|e| e.to_string())?;
-        session
-            .dispatch(Command::CitySettle { player, unit })
-            .map_err(|e| e.to_string())?;
-    }
-    // Pick garrisons only after reserving every capital.
-    let mut occupied = centers.clone();
-    for (i, &center) in centers_in_seat_order.iter().enumerate() {
-        if let Some(tile) = topology
-            .neighbors(center)
-            .into_iter()
-            .find(|id| !occupied.contains(id) && land.contains(id))
-        {
-            occupied.insert(tile);
-            session
-                .dispatch(Command::UnitSpawn {
-                    player: PlayerId::new(i as u32 + 1),
-                    unit: UnitId::new(2 * i as u32 + 1),
-                    kind: UnitKind::Warrior,
-                    tile,
-                })
-                .map_err(|e| e.to_string())?;
-        }
-    }
-    if let Some(&camp) = land
-        .iter()
-        .filter(|&&id| centers.iter().all(|&c| topology.distance(c, id) >= 3))
-        .min_by_key(|&&id| (centers.iter().map(|&c| topology.distance(c, id)).min(), id))
-    {
-        session
-            .dispatch(Command::BarbarianSpawn {
-                tile: camp,
-                kind: UnitKind::Barbarian,
-            })
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(session)
-}
+pub(super) use histeries_sim::frontier;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use histeries_hex::FlatHex;
+    use histeries_rules_core::PlayerId;
+    use histeries_sim::MapState;
 
     #[test]
     fn frontier_and_json_scenario_batch_use_normal_dispatch_and_preserve_input_on_failure() {

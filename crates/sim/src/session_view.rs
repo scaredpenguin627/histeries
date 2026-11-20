@@ -45,6 +45,11 @@ impl Session {
         SimulationState::decode(bytes).map(Self::from_state)
     }
 
+    /// Encodes the live position in the versioned simulation save format.
+    pub fn save_bytes(&self) -> Vec<u8> {
+        self.state.encode()
+    }
+
     /// Lists seat IDs in canonical order for host credential binding.
     pub fn seat_ids(&self) -> impl Iterator<Item = PlayerId> + '_ {
         self.state.players()
@@ -167,6 +172,7 @@ impl SimulationState {
                 visible_tiles.iter().filter_map(|tile| {
                     map.tile(*tile).map(|state| VisibleTileObservation {
                         tile: *tile,
+                        embedding: map.topology().embedding(*tile).expect("visible map tile"),
                         terrain: state.terrain,
                         feature: state.feature,
                         river: state.river,

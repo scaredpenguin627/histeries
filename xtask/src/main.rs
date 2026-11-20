@@ -23,7 +23,8 @@ const ORDER: &[&str] = &[
     "cli",
     "client",
 ];
-const FORBIDDEN_BELOW_CLIENT: &[&str] = &["wgpu", "egui", "winit", "glutin", "sdl2", "-sys"];
+const FORBIDDEN_BELOW_CLIENT: &[&str] =
+    &["wgpu", "egui", "eframe", "winit", "glutin", "sdl2", "-sys"];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
