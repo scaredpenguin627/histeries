@@ -2,7 +2,7 @@
 
 The gates enforce the following budgets. Memory limits are provisional P1-12 regression thresholds. Bounds use integer arithmetic. Reported ratios and wall-clock measurements are diagnostic.
 
-The 900-second fast-gate reference is the 4-vCPU PR runner specified in AGENTS.md. The Tier A Windows target is `x86_64-pc-windows-msvc`. The same wall-time limit is enforced by local `ci-fast` runs. Local measurements identify the host toolchain and whether Cargo build artifacts were present when the run started.
+The 900-second fast-gate reference is the 4-vCPU PR runner specified in AGENTS.md. The Tier A Windows target is `x86_64-pc-windows-msvc`. Every `ci-fast` invocation enforces this limit and returns a failure when it expires, including a local cold build on Windows GNU. The scorecard reports those local failures separately from the official runner results. Each measurement identifies the platform, toolchain and initial Cargo cache state.
 
 | Measure | Limit | Fixture |
 | --- | ---: | --- |

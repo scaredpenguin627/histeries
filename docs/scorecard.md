@@ -8,7 +8,7 @@ The final native-client fast gate passed all 140 tests in 152.659 seconds locall
 
 ### Scenario editor
 
-On Windows GNU, editor revision `68fcc0d3e107` passed the 900-second fast gate in 859.427 s from an empty Cargo target and in 62.291 s with warm artifacts. All 151 tests, 34 parity checks and 1,200 round hashes passed. Under the same clean-build settings the pre-editor baseline `696c8c2d2929` took 934.900 s immediately before the editor and 913.207 s immediately after it. Both baseline runs completed their functional checks and exceeded the wall-time limit. Earlier editor revisions also exceeded that budget. [Scenario editor report](sessions/2026-11-19-phase3-editor.md)
+The hosted fast gate on editor source `9e3ed6cd5c16` passed with restored Cargo caches in 138.332 s on Linux, 212.949 s on macOS and 238.562 s on Windows MSVC. All 155 workspace tests, 34 parity checks and 1,200 round hashes passed. The three platforms produced matching hashes. On the local Windows GNU machine, a cached run with a release rebuild passed in 627.530 s. Two empty-target runs completed every functional check and failed the 900-second limit at 970.775 s and 990.230 s. [Hosted fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/44754110314) · [Scenario editor report](sessions/2026-11-19-phase3-editor.md)
 
 ## Phase 2 measurements · 2026-11-19
 

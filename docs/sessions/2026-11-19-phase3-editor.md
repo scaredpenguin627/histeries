@@ -8,7 +8,22 @@ The editor shares chart geometry, picking and rendering with the game. Brushes u
 
 The maintainer authorized a draft PR to run the hosted matrix on the exact submission before final independent approval. The 4-vCPU PR runner has a 900-second fast-gate budget. Its Windows Tier A job uses MSVC.
 
-On 2026-11-20 the pre-editor revision and the submitted editor were run in order on one eight-logical-processor Windows GNU host with 8 GiB of RAM. Each clean run used a separate checkout and an initially empty Cargo target with the default job count and CI profile settings. The intervening governance merge (`3b2bd419`) changed only review policy and documentation.
+The following runs used editor source `9e3ed6cd5c166b7bd0d2adea9ee8346ac386250d`, including the simulation-owned scenario draft and the accepted-batch replay tests. Each completed 155 workspace tests, 34 parity checks, both OHOS checks, the wasm32 check and six games spanning 1,200 rounds.
+
+| Environment | Cargo artifacts | Fast gate | Worst game planning p95 | Result |
+| --- | --- | ---: | ---: | --- |
+| Hosted Linux x86_64 | Cache restored | 138.332 s | 383 µs | Passed |
+| Hosted macOS arm64 | Cache restored | 212.949 s | 518 µs | Passed |
+| Hosted Windows x86_64 MSVC | Cache restored | 238.562 s | 610 µs | Passed |
+| Local Windows GNU | Reused target from `68fcc0d3`, two jobs, release rebuild | 627.530 s | 2,586 µs | Passed |
+| Local Windows GNU | Empty target, default jobs | 970.775 s | 5,083 µs | Wall time exceeded |
+| Local Windows GNU repeat | Second empty target, default jobs | 990.230 s | 1,508 µs | Wall time exceeded |
+
+All four hosted fast jobs, five nightly jobs and twelve weekly jobs passed at that source revision. Both empty-target GNU runs exited with status 1 on wall time. The hosted reference jobs all restored caches. The local baseline runs below measured an earlier editor candidate and do not isolate the timing effect of the changes from `68fcc0d3` to `9e3ed6cd`. [Fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/44754110314) · [Nightly](https://github.com/scaredpenguin627/histeries/actions/runs/44754143999) · [Weekly](https://github.com/scaredpenguin627/histeries/actions/runs/44754150781)
+
+### Earlier revisions
+
+On 2026-11-20 the pre-editor revision and the earlier editor candidate `68fcc0d3e107` were run in order on one eight-logical-processor Windows GNU host with 8 GiB of RAM. Each clean run used a separate checkout and an initially empty Cargo target with the default job count and CI profile settings. The intervening governance merge (`3b2bd419`) changed only review policy and documentation.
 
 | Run order | Revision | Cargo artifacts | Fast gate | Worst game planning p95 | Tests passed |
 | --- | --- | --- | ---: | ---: | ---: |
