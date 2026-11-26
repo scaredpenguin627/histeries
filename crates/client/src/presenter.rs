@@ -3,6 +3,7 @@
 mod atlas;
 pub(crate) mod editor;
 mod inspector;
+pub(crate) mod scene3d;
 #[cfg(test)]
 mod tests;
 
@@ -98,6 +99,9 @@ pub(crate) struct BoardView<'a> {
 #[derive(Default)]
 pub struct Presenter {
     camera: Camera,
+    camera3d: scene3d::Camera3d,
+    pub(crate) three_d: bool,
+    fit_3d: bool,
     selected: Option<TileId>,
     target: Option<Target>,
     feedback: Option<(String, bool)>,
@@ -106,6 +110,18 @@ pub struct Presenter {
 }
 
 impl Presenter {
+    pub(crate) fn new(three_d: bool) -> Self {
+        Self {
+            three_d,
+            ..Default::default()
+        }
+    }
+
+    /// Discard the outgoing seat's selection, camera and private order state.
+    pub(crate) fn reset(&mut self) {
+        *self = Self::new(self.three_d);
+    }
+
     pub(crate) fn clear_order(&mut self) {
         self.target = None;
         self.feedback = None;
@@ -164,7 +180,7 @@ impl Presenter {
             }
         }
         if game.is_hotseat() && (game.handoff_seat().is_some() || game.winner().is_some()) {
-            *self = Self::default();
+            self.reset();
             egui::Popup::close_all(root.ctx());
             root.ctx().request_discard("show the public hotseat screen");
             root.ctx().request_repaint();
@@ -228,11 +244,26 @@ impl Presenter {
             .frame(frame(INK, 10, 5))
             .show(root, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("−").on_hover_text("Zoom out").clicked() {
-                        self.camera.zoom(1.0 / 1.2, Vec2::ZERO);
+                    if !ui.ctx().text_edit_focused()
+                        && ui.memory(|m| m.is_above_modal_layer(ui.layer_id()))
+                        && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::V))
+                    {
+                        self.three_d = !self.three_d;
                     }
-                    if ui.button("+").on_hover_text("Zoom in").clicked() {
-                        self.camera.zoom(1.2, Vec2::ZERO);
+                    ui.selectable_value(&mut self.three_d, false, "2D");
+                    ui.selectable_value(&mut self.three_d, true, "3D")
+                        .on_hover_text("Switch map view (V)");
+                    ui.separator();
+                    for (label, hint, factor) in
+                        [("−", "Zoom out", 1.0 / 1.2), ("+", "Zoom in", 1.2)]
+                    {
+                        if ui.button(label).on_hover_text(hint).clicked() {
+                            if self.three_d {
+                                self.camera3d.zoom(factor, Vec2::ZERO);
+                            } else {
+                                self.camera.zoom(factor, Vec2::ZERO);
+                            }
+                        }
                     }
                     if ui
                         .button("Center")
@@ -242,7 +273,12 @@ impl Presenter {
                     {
                         self.focus(view, id);
                     }
-                    if !compact {
+                    if self.three_d {
+                        self.camera_controls(ui);
+                        if !compact {
+                            ui.weak("Drag to pan   ·   Right-drag to orbit   ·   Scroll to zoom");
+                        }
+                    } else if !compact {
                         ui.weak("Drag to pan   ·   Scroll to zoom");
                     }
                 });
@@ -305,9 +341,43 @@ impl Presenter {
         }
     }
 
+    fn camera_controls(&mut self, ui: &mut Ui) {
+        ui.menu_button("Camera", |ui| {
+            for orbit in [true, false] {
+                ui.label(if orbit { "Orbit" } else { "Pan" });
+                ui.horizontal(|ui| {
+                    for (label, axis) in [
+                        ("Left", vec2(-1.0, 0.0)),
+                        ("Right", vec2(1.0, 0.0)),
+                        ("Up", vec2(0.0, -1.0)),
+                        ("Down", vec2(0.0, 1.0)),
+                    ] {
+                        if ui.button(label).clicked() {
+                            if orbit {
+                                self.camera3d.orbit(axis * 35.0);
+                            } else {
+                                self.camera3d.pan(axis * -40.0);
+                            }
+                        }
+                    }
+                });
+            }
+            if ui.button("Fit visible map").clicked() {
+                self.fit_3d = true;
+                ui.close();
+            }
+            if ui.button("Reset camera").clicked() {
+                self.camera3d = scene3d::Camera3d::default();
+                self.fit_3d = true;
+                ui.close();
+            }
+        });
+    }
+
     fn focus(&mut self, view: &Observation, tile: TileId) {
-        if let Some(point) = visible(view.board(), tile).map(|tile| tile.embedding) {
-            self.camera.center = Camera::world(point);
+        if let Some(observed) = visible(view.board(), tile) {
+            self.camera.center = Camera::world(observed.embedding);
+            self.camera3d.focus(observed);
             self.selected = Some(tile);
         }
     }
@@ -326,17 +396,81 @@ impl Presenter {
     }
 
     fn map(&mut self, ui: &mut Ui, view: &Observation, command: &mut Option<Command>) {
-        if !self.initialized && ui.available_rect_before_wrap().is_positive() {
-            self.camera
-                .fit(view.board(), ui.available_rect_before_wrap());
+        let viewport = ui.available_rect_before_wrap();
+        if !self.initialized && viewport.is_positive() {
+            self.camera.fit(view.board(), viewport);
+            self.fit_3d = true;
             self.initialized = true;
         }
-        let (response, painter, hovered) = atlas::surface(ui, view.board(), &mut self.camera);
-        let rect = response.rect;
-        let radius = self.camera.radius;
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.target = None;
         }
+        let caption = (viewport.width() > 215.0 && viewport.height() > 90.0).then(|| {
+            let text = self.target.map(Target::prompt).unwrap_or(if self.three_d {
+                "Uncharted area  ·  out of sight"
+            } else {
+                "Hatched area  ·  out of sight"
+            });
+            let at = viewport.left_bottom() + vec2(10.0, -9.0);
+            let galley =
+                ui.painter()
+                    .layout_no_wrap(text.into(), FontId::proportional(12.0), PAPER);
+            let bounds = Align2::LEFT_BOTTOM
+                .anchor_size(at, galley.size())
+                .expand(4.0);
+            (bounds, galley)
+        });
+        let over_caption = caption.as_ref().is_some_and(|(bounds, _)| {
+            ui.input(|i| {
+                i.pointer
+                    .interact_pos()
+                    .is_some_and(|at| bounds.contains(at))
+            })
+        });
+        let (response, painter, hovered) = if self.three_d {
+            self.map_3d(ui, view, over_caption)
+        } else {
+            self.map_2d(ui, view, over_caption)
+        };
+        if response.clicked()
+            && let Some(tile) = hovered.and_then(|id| visible(view.board(), id))
+        {
+            if let Some(target) = self.target {
+                match target.command(tile, view) {
+                    Ok(order) => *command = Some(order),
+                    Err(reason) => self.feedback = Some((reason.to_owned(), true)),
+                }
+            } else {
+                self.selected = Some(tile.tile);
+                self.realm = false;
+                self.feedback = None;
+            }
+        }
+        if response.hovered() && !over_caption {
+            ui.ctx().set_cursor_icon(if response.dragged() {
+                egui::CursorIcon::Grabbing
+            } else if self.target.is_some() {
+                egui::CursorIcon::Crosshair
+            } else {
+                egui::CursorIcon::Grab
+            });
+        }
+        if let Some((bounds, galley)) = caption {
+            painter.rect_filled(bounds, 2.0, INK);
+            painter.galley(bounds.min + Vec2::splat(4.0), galley, PAPER);
+        }
+    }
+
+    fn map_2d(
+        &mut self,
+        ui: &mut Ui,
+        view: &Observation,
+        over_caption: bool,
+    ) -> (egui::Response, egui::Painter, Option<TileId>) {
+        let (response, painter, hovered) = atlas::surface(ui, view.board(), &mut self.camera);
+        let hovered = hovered.filter(|_| !over_caption);
+        let rect = response.rect;
+        let radius = self.camera.radius;
         let locate = |id| {
             visible(view.board(), id)
                 .map(|tile| self.camera.project(tile.embedding, rect))
@@ -349,40 +483,55 @@ impl Presenter {
         if let Some(tile) = hovered.and_then(|id| visible(view.board(), id)) {
             let center = self.camera.project(tile.embedding, rect);
             atlas::outline(&painter, center, radius * 0.94, PAPER);
-            if response.clicked() {
-                if let Some(target) = self.target {
-                    match target.command(tile, view) {
-                        Ok(order) => *command = Some(order),
-                        Err(reason) => self.feedback = Some((reason.to_owned(), true)),
-                    }
-                } else {
-                    self.selected = Some(tile.tile);
-                    self.realm = false;
-                    self.feedback = None;
-                }
-            }
-        }
-        if response.hovered() {
-            ui.ctx().set_cursor_icon(if response.dragged() {
-                egui::CursorIcon::Grabbing
-            } else if self.target.is_some() {
-                egui::CursorIcon::Crosshair
-            } else {
-                egui::CursorIcon::Grab
-            });
         }
         atlas::compass(&painter, rect);
-        if rect.width() > 215.0 && rect.height() > 90.0 {
-            let text = self
-                .target
-                .map(Target::prompt)
-                .unwrap_or("Hatched area  ·  out of sight");
-            let at = rect.left_bottom() + vec2(10.0, -9.0);
-            let galley = painter.layout_no_wrap(text.into(), FontId::proportional(12.0), PAPER);
-            let label_rect = Align2::LEFT_BOTTOM.anchor_size(at, galley.size());
-            painter.rect_filled(label_rect.expand(4.0), 2.0, INK);
-            painter.galley(label_rect.min, galley, PAPER);
+        (response, painter, hovered)
+    }
+
+    fn map_3d(
+        &mut self,
+        ui: &mut Ui,
+        view: &Observation,
+        over_caption: bool,
+    ) -> (egui::Response, egui::Painter, Option<TileId>) {
+        let (response, painter) = ui.allocate_painter(
+            ui.available_size().max(Vec2::splat(1.0)),
+            egui::Sense::click_and_drag(),
+        );
+        let rect = response.rect;
+        if self.fit_3d {
+            self.camera3d.fit(view.board(), rect);
+            self.fit_3d = false;
         }
+        let pointer = response
+            .interact_pointer_pos()
+            .or_else(|| response.hover_pos());
+        if let Some(at) = pointer {
+            let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+            self.camera3d
+                .zoom((scroll * 0.003).exp() * pinch, at - rect.center());
+        }
+        if response.dragged_by(egui::PointerButton::Secondary) {
+            self.camera3d.orbit(response.drag_delta());
+        } else if response.dragged_by(egui::PointerButton::Primary) {
+            self.camera3d.pan(response.drag_delta());
+        }
+        let mut scene = scene3d::Scene::build(
+            view.board(),
+            view.seat(),
+            &self.camera3d,
+            rect,
+            self.selected,
+        );
+        let hovered = pointer
+            .filter(|at| !over_caption && rect.contains(*at))
+            .and_then(|at| scene.pick(at));
+        if let Some(tile) = hovered {
+            scene.highlight(tile);
+        }
+        painter.rect_filled(rect, 0.0, INK);
+        scene3d::gpu::paint(&painter, rect, scene.vertices);
+        (response, painter, hovered)
     }
 }
 

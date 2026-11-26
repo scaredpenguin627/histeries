@@ -2,6 +2,20 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 5 — 3D client
+
+GitHub Actions tested the 3D client from `8dd08a5b6bc6` on PR #13. On Linux, Chrome 158 with SwiftShader rendered a 1,200 × 657 browser frame. Switching from 2D to 3D changed 39.500% of 16,000 map-area samples. Orbiting the camera changed 39.525% at the same turn. The player then advanced a turn in 3D, returned to 2D and saved. [Web captures, renderer identity and measurements](https://github.com/scaredpenguin627/histeries/actions/runs/45834082778/artifacts/15124077173) · [3D client session report](sessions/2026-11-26-phase5-3d-client.md)
+
+The four-CPU Linux runner captured 1,200 × 800 native frames. Switching from 2D to 3D changed 46.325% of the samples in the single-player map and 44.050% in the LAN map. The covered hotseat handoff had zero differing pixels across the two views. [Native and LAN captures, handoff comparison and measurements](https://github.com/scaredpenguin627/histeries/actions/runs/45834082778/artifacts/15123763357)
+
+| Hosted runner | `cargo xtask ci-fast` |
+| --- | ---: |
+| Linux x86_64 | 123.706 s |
+| macOS arm64 | 133.507 s |
+| Windows x86_64 MSVC | 288.843 s |
+
+All three PR runners met the 900 s budget. The same source passed the nightly and weekly stress suites. [Fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/45834082778) · [Nightly](https://github.com/scaredpenguin627/histeries/actions/runs/45834115539) · [Weekly](https://github.com/scaredpenguin627/histeries/actions/runs/45834122181)
+
 ## Phase 4 measurements
 
 GitHub Actions tested multiplayer source `1c84ea35b1fc` on PR #12. On the four-CPU Linux runner, eight terminal seats played two rounds over TCP loopback. All eight independently reconstructed sequence 16, round 2 and hash `312f74ed01bfecd1`. The Linux artifact includes each seat’s result and 1,200 × 800 captures of the hotseat handoff and native LAN player screen. [Linux measurements and screenshots](https://github.com/scaredpenguin627/histeries/actions/runs/45818090566/artifacts/15117556541) · [Multiplayer session report](sessions/2026-11-26-phase4-lockstep.md)

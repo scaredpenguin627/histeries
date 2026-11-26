@@ -19,8 +19,12 @@ capture() {
   timeout 90s xvfb-run -a -s '-screen 0 1280x1024x24' target/debug/histeries-client "$@"
 }
 capture --hotseat --players 8 --seed 7 --capture "$out/handoff.png"
+capture --hotseat --players 8 --seed 7 --3d --capture "$out/handoff-3d.png"
+compare -metric AE "$out/handoff.png" "$out/handoff-3d.png" null: 2>"$out/handoff-pixel-differences.txt"
 export HISTERIES_LAN_TOKEN=ci-seat-1
 capture --connect "$address" --seat 1 --capture "$out/lan.png"
+capture --connect "$address" --seat 1 --3d --capture "$out/lan-3d.png"
+bash scripts/measure-3d-frame.sh "$out/lan.png" "$out/lan-3d.png" > "$out/lan-3d.json"
 
 join() {
   HISTERIES_LAN_TOKEN="ci-seat-$1" timeout 15s target/debug/histeries lan join --connect "$address" --seat "$1"

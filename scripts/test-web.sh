@@ -87,6 +87,13 @@ click() {
     post "session/$session/actions" "$(jq -nc --argjson x "$1" --argjson y "$2" '{actions:[{type:"pointer",id:"mouse",parameters:{pointerType:"mouse"},actions:[{type:"pointerMove",x:$x,y:$y,origin:"viewport",duration:120},{type:"pointerDown",button:0},{type:"pause",duration:180},{type:"pointerUp",button:0}]}]}')" >/dev/null
     wait_for_paint
 }
+view_key() {
+    post "session/$session/actions" "$(jq -nc --arg key "$1" '{actions:[{type:"key",id:"keyboard",actions:[{type:"keyDown",value:$key},{type:"pause",duration:100},{type:"keyUp",value:$key}]}]}')" >/dev/null
+    wait_for_paint
+}
+wait_3d_turn() {
+    wait_for "return document.querySelector('canvas')?.getAttribute('aria-label') === 'Histeries 3D strategy map, turn $1'" "3D map did not reach turn $1."
+}
 game_menu() { click 150 27; }
 scenario_menu() { click 209 24; }
 open_editor() {
@@ -120,7 +127,19 @@ evaluate 'localStorage.setItem("histeries.world.v1", "invalid*"); return true' >
 check_failed_open "Invalid saved data:"
 evaluate 'localStorage.removeItem("histeries.world.v1"); return true' >/dev/null
 x=$(evaluate 'return Math.floor(document.querySelector("canvas").getBoundingClientRect().right - 48)')
+screenshot target/gates/web-2d.png
+view_key v
+wait_3d_turn 0
+screenshot target/gates/web-3d.png
+bash scripts/measure-3d-frame.sh target/gates/web-2d.png target/gates/web-3d.png > target/gates/web-3d.json
+post "session/$session/actions" '{"actions":[{"type":"pointer","id":"mouse","parameters":{"pointerType":"mouse"},"actions":[{"type":"pointerMove","origin":"viewport","x":350,"y":300},{"type":"pointerDown","button":2},{"type":"pointerMove","origin":"viewport","x":475,"y":345,"duration":400},{"type":"pointerUp","button":2}]}]}' >/dev/null
+wait_for_paint
+wait_3d_turn 0
+screenshot target/gates/web-3d-orbit.png
+bash scripts/measure-3d-frame.sh target/gates/web-3d.png target/gates/web-3d-orbit.png > target/gates/web-3d-orbit.json
 click "$x" 24
+wait_3d_turn 1
+view_key v
 wait_turn 1
 game_menu
 click 153 97                     # Save game

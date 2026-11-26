@@ -10,6 +10,8 @@ hex -> rules-core -> ruleset -> sim -> ai -> net -> mcp -> cli -> client
 
 Each arrow points from a lower layer to the next layer. `xtask layers` checks that no crate depends on a same-or-higher layer. The client is the only layer allowed to add windowing or GPU dependencies.
 
+The 2D and 3D match views share the seat observation, tile inspector and command controller. The 3D view converts visible topology embeddings into a depth-tested triangle mesh. Its camera and picker operate on the same geometry. [3D renderer decision](adr/0023-three-dimensional-match-view.md)
+
 | Crate | Responsibility |
 | --- | --- |
 | `hex` | Topology trait, tile IDs, graph distance, rings, areas, lines of sight, and rendering embeddings. |

@@ -31,7 +31,10 @@ impl eframe::App for BrowserApp {
         let screen = self.game.screen();
         if self.announced != Some(screen) {
             let label = match screen {
-                Screen::Map(turn) => format!("Histeries strategy map, turn {turn}"),
+                Screen::Map { turn, three_d } => {
+                    let mode = if three_d { "3D " } else { "" };
+                    format!("Histeries {mode}strategy map, turn {turn}")
+                }
                 Screen::Editor => "Histeries scenario editor".to_owned(),
                 Screen::Handoff(seat) => {
                     format!("Histeries hotseat handoff to seat {}", seat.index())
@@ -62,7 +65,7 @@ impl WebGame {
     }
 }
 
-/// Starts the same 2D application used by the desktop client on a page-owned canvas.
+/// Starts the desktop game interface on a page-owned WebGPU canvas.
 #[wasm_bindgen]
 pub async fn start_game(canvas: HtmlCanvasElement, seed: u64) -> Result<WebGame, JsValue> {
     let game = ClientSession::new(seed).map_err(|e| JsValue::from_str(&e))?;
@@ -70,7 +73,10 @@ pub async fn start_game(canvas: HtmlCanvasElement, seed: u64) -> Result<WebGame,
     runner
         .start(
             canvas.clone(),
-            eframe::WebOptions::default(),
+            eframe::WebOptions {
+                depth_buffer: 24,
+                ..Default::default()
+            },
             Box::new(move |cc| {
                 Ok(Box::new(BrowserApp {
                     game: GameApp::new(cc, game),

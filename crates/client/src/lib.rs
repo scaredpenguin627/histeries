@@ -1,4 +1,4 @@
-//! The Histeries 2D client.
+//! The Histeries desktop and web client.
 
 #![forbid(unsafe_code)]
 
