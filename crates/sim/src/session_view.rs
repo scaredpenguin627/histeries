@@ -1,9 +1,9 @@
 //! Live and historical observations from the same simulation projection.
 
 use super::{
-    BTreeMap, BTreeSet, BoardObservation, CityObservation, DispatchError, MapState, Observation,
-    PlayerId, ProductionItem, ProgressObservation, ReplayLog, SerializationError, Session,
-    SimulationState, TileId, TileTopology, UnitObservation, UnitSlots, VictoryKind,
+    AgeObservation, BTreeMap, BTreeSet, BoardObservation, CityObservation, DispatchError, MapState,
+    Observation, PlayerId, ProductionItem, ProgressObservation, ReplayLog, SerializationError,
+    Session, SimulationState, TileId, TileTopology, UnitObservation, UnitSlots, VictoryKind,
     VisibleCityObservation, VisibleTileObservation, VisibleUnitObservation,
 };
 
@@ -151,6 +151,8 @@ impl SimulationState {
             .progress
             .get(&seat)
             .ok_or(DispatchError::UnknownPlayer(seat))?;
+        let ruleset = histeries_ruleset::base_ruleset();
+        let ages = progress.reached_ages(ruleset);
         Ok(Observation {
             seat,
             own_marker: self
@@ -159,6 +161,12 @@ impl SimulationState {
             units,
             cities,
             progress: ProgressObservation {
+                age: AgeObservation::from_reached(ages),
+                available_policies: ruleset
+                    .policies()
+                    .filter(|policy| progress.permits_policy(policy, ages))
+                    .map(|policy| policy.id().to_owned())
+                    .collect(),
                 technology_progress: progress.technology_progress,
                 civic_progress: progress.civic_progress,
                 current_technology: progress.current_technology.clone(),

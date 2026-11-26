@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added seat-specific ages with research and civic prerequisites, research carry-over rules and cumulative unlocks. The Realm panel shows the current age and lets players adopt newly available policies.
+
 - Added playable spherical worlds to solo, hotseat, LAN and MCP. The desktop and WebGPU clients can rotate the planet, inspect pentagons, order units and edit spherical scenarios. Flat saves retain their original encoding.
 
 - Added a deterministic geodesic board to the topology library, with stable tile IDs, shared pentagonal and hexagonal footprints, and shortest routes across the entire sphere.

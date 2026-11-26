@@ -310,6 +310,26 @@ id = "civic_25"
 cost = 58
 prerequisites = ["civic_23"]
 
+[[ages]]
+id = "founding"
+name = "Founding Age"
+
+[[ages]]
+id = "industrial"
+name = "Industrial Age"
+required_technologies = ["tech_12"]
+
+[[ages]]
+id = "orbital"
+name = "Orbital Age"
+required_technologies = ["tech_20"]
+unlocks = ["orbital_access"]
+
+[[policies]]
+id = "policy_orbital_research"
+required_age = "orbital"
+science_bonus = 2
+
 [[policies]]
 id = "policy_growth"
 required_civic = "civic_02"

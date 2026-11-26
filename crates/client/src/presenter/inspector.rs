@@ -218,6 +218,12 @@ impl Presenter {
         ui.separator();
         let progress = view.progress();
         let rules = histeries_ruleset::base_ruleset();
+        if let Some(age) = &progress.age {
+            ui.heading(&age.name);
+            for capability in &age.unlocks {
+                ui.label(words(capability));
+            }
+        }
         ui.add_enabled_ui(board.can_order, |ui| {
             let player = view.seat();
             if let Some(technology) = research_menu(
@@ -243,6 +249,30 @@ impl Presenter {
                     .map(|c| (c.id(), c.cost(), c.prerequisites())),
             ) {
                 *order = Some(Command::ResearchCivic { player, civic });
+            }
+            ui.label(RichText::new("Policies").strong());
+            for slot in 0..progress.policy_slots {
+                let current = progress.policies.iter().find(|(active, _)| *active == slot);
+                let label = current.map_or_else(|| "Empty".to_owned(), |(_, id)| words(id));
+                ui.menu_button(format!("Slot {} · {label}", slot + 1), |ui| {
+                    for id in &progress.available_policies {
+                        if progress.policies.iter().any(|(_, active)| active == id) {
+                            continue;
+                        }
+                        if ui.button(words(id)).clicked() {
+                            *order = Some(Command::PolicyAdopt {
+                                player,
+                                slot,
+                                policy: id.clone(),
+                            });
+                            ui.close();
+                        }
+                    }
+                    if current.is_some() && ui.button("Remove policy").clicked() {
+                        *order = Some(Command::PolicyRemove { player, slot });
+                        ui.close();
+                    }
+                });
             }
         });
     }

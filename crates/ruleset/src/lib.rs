@@ -12,6 +12,8 @@ use histeries_rules_core::{
 };
 use serde::Deserialize;
 
+mod age;
+pub use age::AgeDefinition;
 mod map_generation;
 pub use map_generation::{Feature, LandGeneration, MapGeneration, ResourceKind, Terrain};
 
@@ -37,6 +39,7 @@ pub struct Ruleset {
     units: BTreeMap<String, UnitDefinition>,
     technologies: BTreeMap<String, TechnologyDefinition>,
     civics: BTreeMap<String, CivicDefinition>,
+    ages: Vec<AgeDefinition>,
     policies: BTreeMap<String, PolicyDefinition>,
     districts: BTreeMap<String, DistrictDefinition>,
     buildings: BTreeMap<String, BuildingDefinition>,
@@ -104,9 +107,18 @@ impl Ruleset {
             cost: raw.cost,
             prerequisites: raw.prerequisites,
         })?;
+        let age_ids = age::validate(&raw.ages, &technologies, &civics)?;
         let mut policies = BTreeMap::new();
         for raw_policy in raw.policies {
             validate_id("policy", &raw_policy.id)?;
+            if let Some(required) = &raw_policy.required_age
+                && !age_ids.contains(required.as_str())
+            {
+                return Err(RulesetError::InvalidValue {
+                    field: "policy.required_age",
+                    value: required.clone(),
+                });
+            }
             if let Some(required) = &raw_policy.required_civic {
                 validate_id("civic", required)?;
                 if !civics.contains_key(required) {
@@ -122,6 +134,7 @@ impl Ruleset {
                     PolicyDefinition {
                         id: raw_policy.id.clone(),
                         required_civic: raw_policy.required_civic,
+                        required_age: raw_policy.required_age,
                         science_bonus: raw_policy.science_bonus,
                         culture_bonus: raw_policy.culture_bonus,
                     },
@@ -242,11 +255,25 @@ impl Ruleset {
             units,
             technologies,
             civics,
+            ages: raw.ages,
             policies,
             districts,
             buildings,
             modifiers,
         })
+    }
+
+    /// Returns ages in progression order, starting with the initial age.
+    pub fn ages(&self) -> &[AgeDefinition] {
+        &self.ages
+    }
+
+    /// Whether a seat in `current` has entered the required age.
+    pub fn has_reached_age(&self, current: Option<&str>, required: &str) -> bool {
+        let Some(index) = self.ages.iter().position(|age| Some(age.id()) == current) else {
+            return false;
+        };
+        self.ages[..=index].iter().any(|age| age.id() == required)
     }
 
     /// Returns the stable ruleset identifier.
@@ -401,6 +428,7 @@ impl CivicDefinition {
 pub struct PolicyDefinition {
     id: String,
     required_civic: Option<String>,
+    required_age: Option<String>,
     science_bonus: i16,
     culture_bonus: i16,
 }
@@ -413,6 +441,11 @@ impl PolicyDefinition {
     /// Returns the civic prerequisite, if any.
     pub fn required_civic(&self) -> Option<&str> {
         self.required_civic.as_deref()
+    }
+
+    /// Returns the earliest age in which this policy can be adopted.
+    pub fn required_age(&self) -> Option<&str> {
+        self.required_age.as_deref()
     }
 
     /// Returns the per-turn science bonus from this policy.
@@ -644,6 +677,8 @@ struct RawRuleset {
     #[serde(default)]
     civics: Vec<RawProgression>,
     #[serde(default)]
+    ages: Vec<AgeDefinition>,
+    #[serde(default)]
     policies: Vec<RawPolicy>,
     #[serde(default)]
     districts: Vec<RawDistrict>,
@@ -675,6 +710,7 @@ struct RawProgression {
 #[serde(deny_unknown_fields)]
 struct RawPolicy {
     id: String,
+    required_age: Option<String>,
     #[serde(default)]
     required_civic: Option<String>,
     #[serde(default)]
@@ -867,7 +903,7 @@ mod tests {
         assert_eq!(ruleset.unit("warrior").unwrap().production_cost(), 6);
         assert_eq!(ruleset.technologies().count(), 25);
         assert_eq!(ruleset.civics().count(), 25);
-        assert_eq!(ruleset.policies().count(), 6);
+        assert_eq!(ruleset.policies().count(), 7);
         assert_eq!(ruleset.technology("tech_25").unwrap().cost(), 58);
         assert_eq!(
             ruleset.civic("civic_02").unwrap().prerequisites(),

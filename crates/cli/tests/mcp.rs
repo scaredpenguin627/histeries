@@ -445,8 +445,31 @@ async fn play(client: &Client) {
     .unwrap();
     let techs = rules["technologies"].as_array().unwrap();
     let mut view = before;
+    assert_eq!(view["progress"]["age"]["id"], "founding");
+    let orbital_policy =
+        json!({"id":"policy.adopt","args":{"slot":0,"policy":"policy_orbital_research"}});
+    assert_eq!(
+        client.tool("one", "dispatch", orbital_policy.clone()).await["isError"],
+        true
+    );
+    let mut observed_ages = Vec::new();
     for _ in 0..500 {
         let progress = &view["progress"];
+        let age = progress["age"]["id"].as_str().unwrap();
+        if observed_ages.last().map(String::as_str) != Some(age) {
+            observed_ages.push(age.to_owned());
+            if age == "orbital" {
+                assert!(
+                    progress["age"]["unlocks"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!("orbital_access"))
+                );
+                client
+                    .value("one", "dispatch", orbital_policy.clone())
+                    .await;
+            }
+        }
         if progress["current_technology"].is_null() {
             let completed = progress["technologies"].as_array().unwrap();
             let next = techs
@@ -478,6 +501,8 @@ async fn play(client: &Client) {
                 .await;
             assert_eq!(replay["winner"], view["winner"]);
             assert_eq!(replay["progress"]["technologies"], json!([]));
+            assert_eq!(replay["progress"]["age"]["id"], "founding");
+            assert_eq!(observed_ages, ["founding", "industrial", "orbital"]);
             assert_eq!(
                 client.tool("one", "replay", json!({"turn":0})).await["isError"],
                 true
