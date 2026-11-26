@@ -4,6 +4,18 @@ The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-1
 
 ## Phase 5 — Playable globe
 
+GitHub Actions tested implementation `efbb02dd7c86` on PR #15. Chrome rendered a 1,200 × 657 globe, advanced to round 1, saved, and reopened the spherical match. Rotating the globe changed 18.97% of 16,000 sampled map pixels. [Browser captures and save](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069/artifacts/15141226520)
+
+| Hosted runner | Fast-gate wall time | Globe trace |
+| --- | ---: | --- |
+| Linux x86_64 | 243.080 s | [Linux artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069/artifacts/15141595569) |
+| macOS arm64 | 492.999 s | [macOS artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069/artifacts/15142997915) |
+| Windows x86_64 MSVC | 500.006 s | [Windows artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069/artifacts/15141517172) |
+
+Each runner compared worker limits of 1 and 8. The three trace files matched byte for byte across all 42 rounds and the terminal record (SHA-256 `a9648129cfd05ce5c9aeef3cb08f1b4722ae103be3fae04d06c35aa18e5d66a9`). [Hosted fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069) · [Nightly](https://github.com/scaredpenguin627/histeries/actions/runs/45866279160) · [Weekly](https://github.com/scaredpenguin627/histeries/actions/runs/45866283830)
+
+The browser and independent native turn-one saves were identical, 1,103 bytes each, with SHA-256 `3974f3c6ce99b5ac1784889a198f8f1e3a96433472e0b9b2b6815d509c459a26`. [Native reference saves and byte-comparison report](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069/artifacts/15143785309)
+
 The frequency-3, seed-7 acceptance game reached a science victory for seat 2 in 42 completed rounds and 494 accepted commands. Planning with worker limits of 1 and 8 produced identical round traces. The Windows loopback host, two verified replicas, reloads and replay agreed on the round boundaries and terminal hash `8886fd3ca80ba118`. The fast gate also compares these traces across native runners and checks a playable browser globe save byte for byte against its native counterpart. [Playable globe report](sessions/2026-11-26-globe-matches.md)
 
 ## Phase 5 — Geodesic topology
