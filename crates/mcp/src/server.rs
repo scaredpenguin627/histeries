@@ -12,6 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::any,
 };
+use histeries_net::lan::LanClient;
 use histeries_rules_core::PlayerId;
 use histeries_sim::Session;
 use rmcp::{
@@ -29,7 +30,7 @@ use serde_json::{Value, json};
 use tower::ServiceExt as TowerServiceExt;
 
 use crate::{
-    game::{Game, Role},
+    game::{Game, MatchTools, Role, seat_lan_error},
     wire,
 };
 
@@ -65,7 +66,7 @@ const RESOURCES: [ResourceSpec; 3] = [
 
 #[derive(Clone)]
 struct Handler {
-    game: Arc<Mutex<Game>>,
+    game: Arc<Mutex<dyn MatchTools>>,
     role: Role,
 }
 
@@ -307,10 +308,6 @@ pub fn serve(session: Session, listen: Option<SocketAddr>) -> Result<(), String>
         return Err("MCP requires 2 to 8 players".into());
     }
     let tokens = credentials(&seats, listen.is_some())?;
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| e.to_string())?;
     if let Some(address) = listen {
         if !address.ip().is_loopback() {
             return Err("MCP HTTP listens on a loopback address".into());
@@ -337,7 +334,7 @@ pub fn serve(session: Session, listen: Option<SocketAddr>) -> Result<(), String>
                 })
                 .collect(),
         );
-        runtime.block_on(async move {
+        runtime()?.block_on(async move {
             let listener = tokio::net::TcpListener::bind(address)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -372,17 +369,39 @@ pub fn serve(session: Session, listen: Option<SocketAddr>) -> Result<(), String>
             game: Arc::new(Mutex::new(game)),
             role,
         };
-        runtime.block_on(async move {
-            handler
-                .serve(stdio())
-                .await
-                .map_err(|e| e.to_string())?
-                .waiting()
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(())
-        })
+        serve_stdio(handler)
     }
+}
+
+fn runtime() -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn serve_stdio(handler: Handler) -> Result<(), String> {
+    runtime()?.block_on(async move {
+        handler
+            .serve(stdio())
+            .await
+            .map_err(|e| e.to_string())?
+            .waiting()
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+}
+
+/// Exposes one authenticated seat of an existing LAN match to a stdio MCP host.
+pub fn connect(address: SocketAddr, seat: PlayerId) -> Result<(), String> {
+    let token = env::var("HISTERIES_LAN_TOKEN")
+        .map_err(|_| "set HISTERIES_LAN_TOKEN for the assigned seat")?;
+    let client = LanClient::connect(address, seat, token).map_err(seat_lan_error)?;
+    serve_stdio(Handler {
+        game: Arc::new(Mutex::new(client)),
+        role: Role::Seat(seat),
+    })
 }
 
 #[cfg(test)]

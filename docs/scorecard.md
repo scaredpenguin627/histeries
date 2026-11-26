@@ -2,6 +2,10 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 4 measurements
+
+The Linux multiplayer acceptance job starts an eight-seat server over loopback, captures the hotseat handoff and LAN player screen, advances two rounds, and compares every peer's reconstructed final hash. The Linux fast artifact includes both PNGs and the host position returned by the last player. [Multiplayer acceptance and measurements](sessions/2026-11-26-phase4-lockstep.md)
+
 ## Phase 3 measurements
 
 The final native-client fast gate passed all 140 tests in 152.659 seconds locally, including nine client tests. Four session tests cover fog, rejected orders, deterministic AI turns, save/load, victory and starting units across 32 seeds. Four presenter tests exercise camera geometry, wide and compact layouts, selection and a rejected move followed by a successful retry. One desktop persistence test opens a replaced save and resumes its last saved round. A seed-7 Windows wgpu run read back a 1,500 × 1,000 PNG from the native surface. The seven MCP wire regressions and the existing CLI suite passed after extracting the shared local match host. [Native client report](sessions/2026-11-19-phase3-client.md)

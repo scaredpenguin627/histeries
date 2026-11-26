@@ -15,6 +15,8 @@ mod game;
 mod mod_manager;
 pub use game::ClientSession;
 #[cfg(not(any(target_env = "ohos", target_arch = "wasm32")))]
+mod lan_game;
+#[cfg(not(any(target_env = "ohos", target_arch = "wasm32")))]
 mod native;
 #[cfg(not(target_env = "ohos"))]
 mod presenter;

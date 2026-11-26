@@ -43,6 +43,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends xvfb xauth libxkbcommon-x11-0 mesa-vulkan-drivers
           cargo build --locked -p histeries-client --bin histeries-client
           timeout 100s xvfb-run -a -s "-screen 0 1280x1024x24" target/debug/histeries-client --seed 7 --capture target/gates/client.png
+      - name: Verify multiplayer clients through a real LAN host
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: |
+          cargo build --locked -p histeries-cli --bin histeries
+          bash scripts/test-multiplayer.sh
       - name: Attach per-round hashes and measurements
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,6 +60,7 @@ jobs:
             target/gates/logical-cpus.txt
             target/gates/parity.json
             target/gates/client.png
+            target/gates/multiplayer/
       - name: Measure paired games against greedy
         if: runner.os == 'Linux'
         shell: bash

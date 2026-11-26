@@ -1,20 +1,28 @@
-use crate::{app::GameApp, game::ClientSession};
+mod lan;
+
+use crate::{app::GameApp, game::ClientSession, lan_game::LanGame};
 use eframe::egui;
+use histeries_rules_core::PlayerId;
 use std::{
     ffi::OsString,
     fs,
     io::Write,
+    net::SocketAddr,
     path::{Path, PathBuf},
     sync::mpsc,
     time::{Duration, Instant},
 };
 
-const USAGE: &str = "histeries-client [--seed INTEGER | --load GAME.hst] [--capture FRAME.png]";
+const USAGE: &str = "histeries-client [--seed INTEGER | --load GAME.hst] [--hotseat] [--players 2..8 (new hotseat only)] [--capture FRAME.png]\n     or: histeries-client --connect IP:PORT --seat ID [--capture FRAME.png] (set HISTERIES_LAN_TOKEN)";
 
 #[derive(Default)]
 struct Options {
     seed: Option<u64>,
     load: Option<PathBuf>,
+    hotseat: bool,
+    players: Option<u32>,
+    connect: Option<SocketAddr>,
+    seat: Option<PlayerId>,
     capture: Option<PathBuf>,
 }
 
@@ -24,6 +32,10 @@ impl Options {
         while let Some(arg) = args.next() {
             if arg == "--help" || arg == "-h" {
                 return Ok(None);
+            }
+            if arg == "--hotseat" && !options.hotseat {
+                options.hotseat = true;
+                continue;
             }
             let value = args.next().ok_or(USAGE)?;
             match arg.to_str() {
@@ -36,10 +48,63 @@ impl Options {
                 Some("--capture") if options.capture.is_none() => {
                     options.capture = Some(value.into())
                 }
+                Some("--connect") if options.connect.is_none() => {
+                    options.connect =
+                        Some(value.to_str().and_then(|s| s.parse().ok()).ok_or(USAGE)?);
+                }
+                Some("--seat") if options.seat.is_none() => {
+                    options.seat = Some(PlayerId::new(
+                        value.to_str().and_then(|s| s.parse().ok()).ok_or(USAGE)?,
+                    ));
+                }
+                Some("--players") if options.players.is_none() => {
+                    options.players = Some(
+                        value
+                            .to_str()
+                            .and_then(|s| s.parse().ok())
+                            .filter(|n| histeries_sim::ScenarioDraft::PLAYERS.contains(n))
+                            .ok_or(USAGE)?,
+                    );
+                }
                 _ => return Err(USAGE.into()),
             }
         }
+        if options.players.is_some() && (!options.hotseat || options.load.is_some()) {
+            return Err(USAGE.into());
+        }
+        if options.connect.is_some() != options.seat.is_some()
+            || (options.connect.is_some()
+                && (options.hotseat || options.seed.is_some() || options.load.is_some()))
+        {
+            return Err(USAGE.into());
+        }
         Ok(Some(options))
+    }
+
+    fn session(&self) -> Result<ClientSession, String> {
+        match (&self.load, self.hotseat) {
+            (Some(path), true) => ClientSession::hotseat_from_save(&open_bytes(path)?),
+            (Some(path), false) => open(path),
+            (None, true) => {
+                ClientSession::hotseat(self.seed.unwrap_or(7), self.players.unwrap_or(2))
+            }
+            (None, false) => ClientSession::new(self.seed.unwrap_or(7)),
+        }
+    }
+
+    fn application(&self, cc: &eframe::CreationContext<'_>) -> Result<DesktopGame, String> {
+        if let (Some(address), Some(seat)) = (self.connect, self.seat) {
+            let token = std::env::var("HISTERIES_LAN_TOKEN")
+                .map_err(|_| "Set HISTERIES_LAN_TOKEN for the assigned seat.")?;
+            let game = LanGame::connect(address, seat, token)?;
+            crate::font::install(&cc.egui_ctx);
+            Ok(DesktopGame::Lan(Box::new(lan::LanApp::new(game))))
+        } else {
+            Ok(DesktopGame::Local(Box::new(GameApp::new(
+                cc,
+                self.session()?,
+            ))))
+        }
     }
 }
 
@@ -77,16 +142,35 @@ struct Capture {
 }
 
 struct Desktop {
-    app: GameApp,
+    app: DesktopGame,
     capture: Option<Capture>,
+}
+
+enum DesktopGame {
+    Local(Box<GameApp>),
+    Lan(Box<lan::LanApp>),
 }
 
 impl eframe::App for Desktop {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.app.ui(ui, frame);
+        match &mut self.app {
+            DesktopGame::Local(app) => app.ui(ui, frame),
+            DesktopGame::Lan(app) => app.ui(ui, frame),
+        }
         if let Some(capture) = &mut self.capture {
             let ctx = ui.ctx().clone();
-            if let Some(path) = capture.path.take() {
+            let ready = match &self.app {
+                DesktopGame::Local(_) => true,
+                DesktopGame::Lan(app) => match app.board_ready() {
+                    Ok(ready) => ready,
+                    Err(error) => {
+                        let _ = capture.result.send(Err(error.to_owned()));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        return;
+                    }
+                },
+            };
+            if ready && let Some(path) = capture.path.take() {
                 let result = capture.result.clone();
                 ui.ctx().request_screenshot(move |image| {
                     let _ = result.send(write_frame(&path, &image));
@@ -130,10 +214,6 @@ pub fn run() -> Result<(), String> {
         println!("{USAGE}");
         return Ok(());
     };
-    let game = match options.load {
-        Some(path) => open(&path)?,
-        None => ClientSession::new(options.seed.unwrap_or(7))?,
-    };
     let capturing = options.capture.is_some();
     let (tx, rx) = mpsc::channel();
     let native = eframe::NativeOptions {
@@ -148,7 +228,7 @@ pub fn run() -> Result<(), String> {
         native,
         Box::new(move |cc| {
             Ok(Box::new(Desktop {
-                app: GameApp::new(cc, game),
+                app: options.application(cc)?,
                 capture: options.capture.map(|path| Capture {
                     path: Some(path),
                     started: Instant::now(),
@@ -168,6 +248,64 @@ pub fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lan_options_require_an_address_and_seat_and_exclude_local_modes() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        let options = parse(&["--connect", "127.0.0.1:8510", "--seat", "5"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(options.seat, Some(PlayerId::new(5)));
+        assert_eq!(options.connect.unwrap().port(), 8510);
+        for args in [
+            vec!["--connect", "127.0.0.1:8510"],
+            vec!["--seat", "1"],
+            vec!["--connect", "127.0.0.1:8510", "--seat", "1", "--hotseat"],
+            vec![
+                "--connect",
+                "127.0.0.1:8510",
+                "--seat",
+                "1",
+                "--load",
+                "file.hst",
+            ],
+        ] {
+            assert!(parse(&args).is_err());
+        }
+    }
+
+    #[test]
+    fn hotseat_launch_loads_a_pending_human_without_advancing_the_match() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        let mut game = parse(&["--players", "3", "--hotseat", "--seed", "7"])
+            .unwrap()
+            .unwrap()
+            .session()
+            .unwrap();
+        game.confirm_handoff();
+        game.end_turn().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("shared.hst");
+        save(&file, &game).unwrap();
+        let file = file.to_str().unwrap();
+        let loaded = parse(&["--hotseat", "--load", file])
+            .unwrap()
+            .unwrap()
+            .session()
+            .unwrap();
+        assert_eq!(
+            loaded.handoff_seat(),
+            Some(histeries_rules_core::PlayerId::new(2))
+        );
+        assert_eq!(loaded.save_bytes(), game.save_bytes());
+        for args in [
+            vec!["--players", "3"],
+            vec!["--hotseat", "--players", "9"],
+            vec!["--hotseat", "--load", file, "--players", "2"],
+        ] {
+            assert!(parse(&args).is_err());
+        }
+    }
 
     #[test]
     fn opening_a_replaced_save_resumes_the_last_saved_round() {

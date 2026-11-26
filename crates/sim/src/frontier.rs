@@ -2,8 +2,21 @@
 use std::collections::BTreeSet;
 
 use crate::{Command, MapState, Session, Terrain, Unit, UnitKind};
-use histeries_hex::{TileId, TileTopology};
+use histeries_hex::{FlatHex, TileId, TileTopology};
 use histeries_rules_core::{PlayerId, UnitId};
+
+/// Opens the same generated 12 × 9 frontier for a shared-screen or network match.
+pub fn seeded_frontier(seed: u64, players: u32) -> Result<Session, String> {
+    if !(2..=8).contains(&players) {
+        return Err("multiplayer requires 2 to 8 seats".into());
+    }
+    let topology = FlatHex::new(12, 9, false, false).map_err(|error| error.to_string())?;
+    let mut bytes = [0; 32];
+    for lane in bytes.as_chunks_mut::<8>().0 {
+        lane.copy_from_slice(&seed.to_le_bytes());
+    }
+    frontier(crate::generate_map(topology, bytes), players)
+}
 
 /// Creates the standard frontier opening: distant capitals, adjacent garrisons and a camp.
 pub fn frontier(map: MapState, players: u32) -> Result<Session, String> {

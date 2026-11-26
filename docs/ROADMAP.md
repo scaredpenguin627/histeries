@@ -51,7 +51,9 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 
 ## Phase 4 — Lockstep multiplayer
 
-- [ ] Add the second transport, desync reports, hotseat, and LAN sessions
+- [x] P4-01 Replicate authorized commands and verify sequence, round and state hashes, including desync reports
+- [x] P4-02 Play hotseat matches with seat-scoped handoffs and save/resume
+- [x] P4-03 Host trusted LAN sessions and join from native graphical or terminal clients
 
 ## Phase 5+
 

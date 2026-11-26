@@ -16,7 +16,7 @@ mod conquest_tests;
 #[cfg(any(test, feature = "extensions"))]
 pub mod extensions;
 mod frontier;
-pub use frontier::{frontier, frontier_duel};
+pub use frontier::{frontier, frontier_duel, seeded_frontier};
 pub mod map;
 mod match_host;
 pub use match_host::MatchHost;

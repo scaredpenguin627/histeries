@@ -9,4 +9,4 @@ mod server;
 mod wire;
 
 #[cfg(not(target_family = "wasm"))]
-pub use server::serve;
+pub use server::{connect, serve};

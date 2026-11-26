@@ -1,16 +1,27 @@
 //! A local player's view of a match hosted by the simulation.
 use histeries_ai::advance_greedy_opponents;
 use histeries_hex::{Embedding, FlatHex, TileId};
+use histeries_net::LockstepHost;
 use histeries_rules_core::PlayerId;
 use histeries_sim::{
     Command, MatchHost, MatchView, Observation, Session, VictoryKind, Viewpoint, frontier_duel,
-    generate_map,
+    generate_map, seeded_frontier,
 };
 
-/// A human seat with a cached fog-filtered observation and greedy opponents.
+enum Players {
+    Solo {
+        host: MatchHost,
+        opponents: Vec<PlayerId>,
+    },
+    Hotseat {
+        host: LockstepHost,
+        handoff: Option<PlayerId>,
+    },
+}
+
+/// A locally hosted match with a cached observation for the human player in control.
 pub struct ClientSession {
-    host: MatchHost,
-    opponents: Vec<PlayerId>,
+    players: Players,
     observation: Observation,
 }
 
@@ -23,6 +34,29 @@ impl ClientSession {
             lane.copy_from_slice(&seed.to_le_bytes());
         }
         Self::from_session(frontier_duel(generate_map(topology, seed_bytes))?)
+    }
+
+    /// Creates a frontier shared by two to eight local human players.
+    pub fn hotseat(seed: u64, players: u32) -> Result<Self, String> {
+        Self::from_hotseat(seeded_frontier(seed, players)?)
+    }
+
+    /// Resumes human seat rotation from the turn completions in an ordinary save.
+    pub fn hotseat_from_save(bytes: &[u8]) -> Result<Self, String> {
+        Self::from_hotseat(Session::from_save_bytes(bytes).map_err(|e| e.to_string())?)
+    }
+
+    fn from_hotseat(session: Session) -> Result<Self, String> {
+        let host = LockstepHost::new(session)?;
+        let handoff = host.active_seat();
+        let player = handoff
+            .or_else(|| host.session().winner().map(|(id, _)| id))
+            .ok_or("no active or winning player")?;
+        let observation = host.session().observe(player).map_err(|e| e.to_string())?;
+        Ok(Self {
+            players: Players::Hotseat { host, handoff },
+            observation,
+        })
     }
 
     /// Loads an ordinary simulation save. The lowest seat ID belongs to the human.
@@ -40,15 +74,41 @@ impl ClientSession {
         }
         let observation = host.session().observe(player).map_err(|e| e.to_string())?;
         Ok(Self {
-            host,
-            opponents,
+            players: Players::Solo { host, opponents },
             observation,
         })
     }
 
+    fn host(&self) -> &MatchHost {
+        match &self.players {
+            Players::Solo { host, .. } => host,
+            Players::Hotseat { host, .. } => host.host(),
+        }
+    }
+
+    /// Whether this match has shared human controls.
+    pub fn is_hotseat(&self) -> bool {
+        matches!(self.players, Players::Hotseat { .. })
+    }
+
+    /// Seat awaiting explicit confirmation before the board may be presented.
+    pub fn handoff_seat(&self) -> Option<PlayerId> {
+        match &self.players {
+            Players::Hotseat { handoff, .. } => *handoff,
+            Players::Solo { .. } => None,
+        }
+    }
+
+    /// Confirms that the next player has taken the controls.
+    pub fn confirm_handoff(&mut self) {
+        if let Players::Hotseat { handoff, .. } = &mut self.players {
+            *handoff = None;
+        }
+    }
+
     /// Encodes the current position as a versioned simulation save.
     pub fn save_bytes(&self) -> Vec<u8> {
-        self.host.session().save_bytes()
+        self.host().session().save_bytes()
     }
 
     /// Returns the current seat's board and private economy.
@@ -65,13 +125,13 @@ impl ClientSession {
 
     /// Returns the publicly declared outcome, including victories by other seats.
     pub fn winner(&self) -> Option<(PlayerId, VictoryKind)> {
-        self.host.session().winner()
+        self.host().session().winner()
     }
 
     /// Reconstructs this seat's view at a retained turn boundary.
     pub fn replay(&self, turn: u32) -> Result<Observation, String> {
         let view = self
-            .host
+            .host()
             .replay(Viewpoint::Seat(self.observation.seat()), turn)?;
         match view.view {
             MatchView::Seat(seat) => Ok(*seat),
@@ -83,21 +143,37 @@ impl ClientSession {
     pub fn dispatch(&mut self, command: Command) -> Result<(), String> {
         let seat = self.observation.seat();
         let ending = matches!(command, Command::TurnEnd { .. });
-        self.host.dispatch(seat, command)?;
-        let result = if ending {
-            advance_greedy_opponents(&mut self.host, &self.opponents)
-        } else {
-            Ok(())
+        let (next, result) = match &mut self.players {
+            Players::Solo { host, opponents } => {
+                host.dispatch(seat, command)?;
+                let result = if ending {
+                    advance_greedy_opponents(host, opponents)
+                } else {
+                    Ok(())
+                };
+                (seat, result)
+            }
+            Players::Hotseat { host, handoff } => {
+                if handoff.is_some() {
+                    return Err("The next player must confirm the handoff.".into());
+                }
+                host.submit(seat, host.position(), command)?;
+                let next = host.active_seat();
+                if ending {
+                    *handoff = next;
+                }
+                (next.unwrap_or(seat), Ok(()))
+            }
         };
         self.observation = self
-            .host
+            .host()
             .session()
-            .observe(seat)
+            .observe(next)
             .map_err(|e| e.to_string())?;
         result
     }
 
-    /// Hands the round to the computer-controlled seats.
+    /// Completes this player's orders for the round.
     pub fn end_turn(&mut self) -> Result<(), String> {
         self.dispatch(Command::TurnEnd {
             player: self.observation.seat(),
@@ -106,7 +182,7 @@ impl ClientSession {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use histeries_rules_core::UnitId;
     use histeries_sim::{MapState, ProductionItem, UnitKind};
@@ -121,7 +197,7 @@ mod tests {
         assert!(opening.visible_tiles().len() < 12 * 9);
         assert!(game.embedding(unit.tile).is_some());
         let hidden_capital = game
-            .host
+            .host()
             .session()
             .observe(PlayerId::new(2))
             .unwrap()
@@ -171,7 +247,7 @@ mod tests {
         }
         assert_eq!(game.replay(0).unwrap(), opening);
         assert_eq!(game.replay(3).unwrap(), *game.observation());
-        let rival = game.host.session().observe(PlayerId::new(2)).unwrap();
+        let rival = game.host().session().observe(PlayerId::new(2)).unwrap();
         assert!(
             rival.progress().current_technology.is_some()
                 || !rival.progress().technologies.is_empty()
@@ -211,8 +287,8 @@ mod tests {
     fn duel_openings_provide_each_seat_a_warrior_and_a_capital() {
         for seed in 0..32 {
             let game = ClientSession::new(seed).unwrap();
-            for seat in game.host.session().seat_ids() {
-                let view = game.host.session().observe(seat).unwrap();
+            for seat in game.host().session().seat_ids() {
+                let view = game.host().session().observe(seat).unwrap();
                 assert_eq!(view.units().len(), 1);
                 assert_eq!(view.units()[0].kind, UnitKind::Warrior);
                 assert_eq!(view.cities().len(), 1);
@@ -221,7 +297,47 @@ mod tests {
     }
 
     #[test]
-    fn capture_publishes_the_winner_and_closes_the_match() {
+    fn hotseat_rounds_match_manual_orders_for_every_supported_roster() {
+        for count in 2..=8 {
+            let mut game = ClientSession::hotseat(7, count).unwrap();
+            let mut direct = MatchHost::new(Session::from_save_bytes(&game.save_bytes()).unwrap());
+            for number in 1..=count {
+                let seat = PlayerId::new(number);
+                assert_eq!(game.handoff_seat(), Some(seat));
+                assert!(game.end_turn().is_err());
+                game.confirm_handoff();
+                assert_eq!(game.observation(), &direct.session().observe(seat).unwrap());
+                let order = Command::ResearchTechnology {
+                    player: seat,
+                    technology: "tech_01".into(),
+                };
+                direct.dispatch(seat, order.clone()).unwrap();
+                game.dispatch(order).unwrap();
+                assert_eq!(
+                    game.host().session().state_hash(),
+                    direct.session().state_hash()
+                );
+                game.end_turn().unwrap();
+                direct
+                    .dispatch(seat, Command::TurnEnd { player: seat })
+                    .unwrap();
+                assert_eq!(
+                    game.host().session().state_hash(),
+                    direct.session().state_hash()
+                );
+                let resumed = ClientSession::hotseat_from_save(&game.save_bytes()).unwrap();
+                assert_eq!(resumed.handoff_seat(), game.handoff_seat());
+                assert_eq!(resumed.save_bytes(), game.save_bytes());
+            }
+            assert_eq!(game.observation().turn(), 1);
+            assert_eq!(game.handoff_seat(), Some(PlayerId::new(1)));
+        }
+        for invalid in [1, 9] {
+            assert!(ClientSession::hotseat(7, invalid).is_err());
+        }
+    }
+
+    pub(crate) fn winning_capture() -> (ClientSession, Command) {
         let [seat, rival] = [2, 5].map(PlayerId::new);
         let board = FlatHex::new(5, 1, false, false).unwrap();
         let mut session = Session::with_map([seat, rival], MapState::blank(board));
@@ -251,7 +367,7 @@ mod tests {
                 kind: UnitKind::Warrior,
             })
             .unwrap();
-        let mut game = ClientSession::from_save_bytes(&session.save_bytes()).unwrap();
+        let game = ClientSession::from_save_bytes(&session.save_bytes()).unwrap();
         let city = game
             .observation()
             .visible_cities()
@@ -259,12 +375,29 @@ mod tests {
             .find(|city| city.owner == rival)
             .unwrap()
             .id;
-        game.dispatch(Command::UnitCaptureCity {
+        let order = Command::UnitCaptureCity {
             player: seat,
             unit,
             city,
-        })
-        .unwrap();
+        };
+        (game, order)
+    }
+
+    #[test]
+    fn capture_publishes_the_winner_and_closes_the_match() {
+        let (mut game, order) = winning_capture();
+        let seat = game.observation().seat();
+        let mut hotseat = ClientSession::hotseat_from_save(&game.save_bytes()).unwrap();
+        assert_eq!(hotseat.handoff_seat(), Some(seat));
+        hotseat.confirm_handoff();
+        hotseat.dispatch(order.clone()).unwrap();
+        game.dispatch(order).unwrap();
+        assert_eq!(hotseat.winner(), game.winner());
+        assert!(hotseat.handoff_seat().is_none());
+        assert!(hotseat.end_turn().is_err());
+        let finished = ClientSession::hotseat_from_save(&hotseat.save_bytes()).unwrap();
+        assert_eq!(finished.winner(), game.winner());
+        assert!(finished.handoff_seat().is_none());
         assert_eq!(game.winner(), Some((seat, VictoryKind::Domination)));
         assert_eq!(game.replay(0).unwrap(), *game.observation());
         assert!(game.end_turn().is_err());

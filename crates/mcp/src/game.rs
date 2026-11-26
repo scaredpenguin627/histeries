@@ -1,6 +1,9 @@
 use histeries_ai::advance_greedy_opponents;
+use histeries_net::lan::{LanClient, LanError, Refusal, SubmissionOutcome};
 use histeries_rules_core::PlayerId;
-use histeries_sim::{Command, MatchHost, MatchObservation, MatchView, Session, Viewpoint};
+use histeries_sim::{
+    Command, MatchHost, MatchObservation, MatchView, Session, VictoryKind, Viewpoint,
+};
 use serde_json::{Value, json};
 
 use crate::wire;
@@ -33,6 +36,44 @@ pub(crate) struct Game {
     bots: Vec<PlayerId>,
 }
 
+pub(crate) trait MatchTools: Send {
+    fn observe(&mut self, role: Role) -> Result<Value, String>;
+    fn replay(&self, role: Role, turn: u32) -> Result<Value, String>;
+    fn dispatch(&mut self, role: Role, id: &str, args: Value) -> Result<Value, String>;
+    fn apply_package(
+        &mut self,
+        _role: Role,
+        _manifest: &str,
+        _module: &str,
+    ) -> Result<Value, String> {
+        Err("an editor credential is required".into())
+    }
+}
+
+fn with_winner(mut view: Value, winner: Option<(PlayerId, VictoryKind)>) -> Value {
+    view["winner"] = json!(winner.map(|(seat, kind)| json!({"seat":seat.index(),"kind":kind})));
+    view
+}
+
+fn render(projected: MatchObservation) -> Value {
+    let view = match projected.view {
+        MatchView::Seat(seat) => wire::observation(&seat),
+        MatchView::Spectator { turn, seats } => json!({"turn":turn,"seats":seats}),
+    };
+    with_winner(view, projected.winner)
+}
+
+fn live(session: &Session, role: Role) -> Result<Value, String> {
+    let view = session
+        .observe_match(role.viewpoint())
+        .map_err(|e| e.to_string())?;
+    let mut result = render(view);
+    if let Ok(seat) = role.player() {
+        result["turn_ended"] = session.has_ended_turn(seat).into();
+    }
+    Ok(result)
+}
+
 impl Game {
     pub(crate) fn new(session: Session, bots: Vec<PlayerId>) -> Self {
         Self {
@@ -40,37 +81,27 @@ impl Game {
             bots,
         }
     }
-    fn render(projected: MatchObservation) -> Value {
-        let mut view = match projected.view {
-            MatchView::Seat(seat) => wire::observation(&seat),
-            MatchView::Spectator { turn, seats } => json!({"turn":turn, "seats":seats}),
-        };
-        view["winner"] = json!(
-            projected
-                .winner
-                .map(|(seat, kind)| json!({"seat":seat.index(),"kind":kind}))
-        );
-        view
-    }
-
-    pub(crate) fn observe(&self, role: Role) -> Result<Value, String> {
-        let view = self
-            .host
-            .session()
-            .observe_match(role.viewpoint())
-            .map_err(|e| e.to_string())?;
-        let mut result = Self::render(view);
-        if let Ok(seat) = role.player() {
-            result["turn_ended"] = self.host.session().has_ended_turn(seat).into();
+    pub(crate) fn resume(&mut self, role: Role) -> Result<(), String> {
+        if role
+            .player()
+            .is_ok_and(|seat| self.host.session().has_ended_turn(seat))
+        {
+            advance_greedy_opponents(&mut self.host, &self.bots)?;
         }
-        Ok(result)
+        Ok(())
+    }
+}
+
+impl MatchTools for Game {
+    fn observe(&mut self, role: Role) -> Result<Value, String> {
+        live(self.host.session(), role)
     }
 
-    pub(crate) fn replay(&self, role: Role, turn: u32) -> Result<Value, String> {
-        self.host.replay(role.viewpoint(), turn).map(Self::render)
+    fn replay(&self, role: Role, turn: u32) -> Result<Value, String> {
+        self.host.replay(role.viewpoint(), turn).map(render)
     }
 
-    pub(crate) fn dispatch(&mut self, role: Role, id: &str, args: Value) -> Result<Value, String> {
+    fn dispatch(&mut self, role: Role, id: &str, args: Value) -> Result<Value, String> {
         let player = role.player()?;
         if self.host.session().winner().is_some() {
             return Err("the game has ended".into());
@@ -89,12 +120,7 @@ impl Game {
         self.observe(role)
     }
 
-    pub(crate) fn apply_package(
-        &mut self,
-        role: Role,
-        manifest: &str,
-        module: &str,
-    ) -> Result<Value, String> {
+    fn apply_package(&mut self, role: Role, manifest: &str, module: &str) -> Result<Value, String> {
         use base64::prelude::*;
         use histeries_sim::extensions::{MAX_MANIFEST_BYTES, MAX_MODULE_BYTES, Package};
         let Role::Editor(seat) = role else {
@@ -110,21 +136,128 @@ impl Game {
         let commands = package.apply(&mut self.host, seat)?;
         Ok(json!({"id":package.id(),"commands":commands}))
     }
+}
 
-    pub(crate) fn resume(&mut self, role: Role) -> Result<(), String> {
-        if role
-            .player()
-            .is_ok_and(|seat| self.host.session().has_ended_turn(seat))
-        {
-            advance_greedy_opponents(&mut self.host, &self.bots)?;
+fn lan_view(client: &LanClient) -> Result<Value, String> {
+    let replica = client.replica();
+    let mut view = live(replica.session(), Role::Seat(client.seat()))?;
+    view["active_seat"] = json!(replica.active_seat().map(PlayerId::index));
+    Ok(view)
+}
+
+// A trusted replica's diagnostics can include both full-world hashes and errors from
+// replaying another seat's orders. Only report the public failure category over MCP.
+pub(crate) fn seat_lan_error(error: LanError) -> String {
+    match error {
+        LanError::Refused(Refusal::Credentials) => "invalid seat credentials",
+        LanError::Refused(Refusal::Version { .. }) => "incompatible LAN protocol version",
+        LanError::Refused(Refusal::Stale { .. }) => "stale position. Observe the match again",
+        LanError::Refused(Refusal::Superseded) | LanError::SubmissionPending => {
+            "observe the match before submitting another order"
         }
-        Ok(())
+        LanError::Refused(Refusal::RecoveryExpired) => "the host cannot verify this match session",
+        LanError::InterruptedSubmissionRequiresRejoin => {
+            "the interrupted order's outcome is unknown. Rejoin the match with a fresh adapter"
+        }
+        LanError::Refused(Refusal::Desync { .. }) | LanError::Replica(_) => {
+            "LAN replica verification failed"
+        }
+        LanError::Refused(Refusal::Rejected(_)) => "LAN host rejected the request",
+        LanError::Protocol(_) => "invalid LAN protocol response",
+        LanError::Io(_) => "LAN connection interrupted",
+    }
+    .into()
+}
+
+fn add_submission_outcome(view: &mut Value, submission: Option<SubmissionOutcome>) {
+    if let Some(outcome) = submission {
+        view["recovered_submission"] = json!(outcome);
+    }
+}
+
+impl MatchTools for LanClient {
+    fn observe(&mut self, _role: Role) -> Result<Value, String> {
+        self.sync().map_err(seat_lan_error)?;
+        let mut view = lan_view(self)?;
+        add_submission_outcome(&mut view, self.submission_outcome());
+        Ok(view)
+    }
+
+    fn replay(&self, _role: Role, turn: u32) -> Result<Value, String> {
+        let replay = self.replay(turn).map_err(seat_lan_error)?;
+        Ok(with_winner(replay.observation, replay.winner))
+    }
+
+    fn dispatch(&mut self, _role: Role, id: &str, args: Value) -> Result<Value, String> {
+        let order = wire::decode(id, args, self.seat(), false)?;
+        if self.replica().active_seat() != Some(self.seat()) {
+            return Err("observe the match and wait for your seat's turn".into());
+        }
+        self.submit(order).map_err(seat_lan_error)?;
+        lan_view(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use histeries_net::{DesyncReport, Position};
+
+    #[test]
+    fn sync_reports_only_the_seats_own_submission_outcome() {
+        let mut ordinary = json!({});
+        add_submission_outcome(&mut ordinary, None);
+        assert_eq!(ordinary, json!({}));
+
+        for (outcome, label) in [
+            (SubmissionOutcome::Accepted, "accepted"),
+            (SubmissionOutcome::Canceled, "canceled"),
+            (SubmissionOutcome::Unknown, "unknown"),
+        ] {
+            let mut view = json!({});
+            add_submission_outcome(&mut view, Some(outcome));
+            assert_eq!(view, json!({"recovered_submission": label}));
+        }
+
+        assert_eq!(
+            seat_lan_error(LanError::InterruptedSubmissionRequiresRejoin),
+            "the interrupted order's outcome is unknown. Rejoin the match with a fresh adapter"
+        );
+    }
+
+    #[test]
+    fn lan_failures_do_not_expose_positions_or_other_seats_order_diagnostics() {
+        let expected = Position {
+            sequence: 12,
+            turn: 1,
+            hash: 0x1234_abcd,
+        };
+        let received = Position {
+            hash: 0x5678_dcba,
+            ..expected
+        };
+        let private_reason = "opponent order failed replay validation";
+        for error in [
+            LanError::Refused(Refusal::Desync { expected, received }),
+            LanError::Replica(DesyncReport {
+                before: received,
+                seat: PlayerId::new(2),
+                expected,
+                actual: received,
+                reason: private_reason.into(),
+            }),
+        ] {
+            assert_eq!(seat_lan_error(error), "LAN replica verification failed");
+        }
+        assert_eq!(
+            seat_lan_error(LanError::Protocol(format!("{private_reason}: {expected}"))),
+            "invalid LAN protocol response"
+        );
+        assert_eq!(
+            seat_lan_error(LanError::Refused(Refusal::Rejected(private_reason.into()))),
+            "LAN host rejected the request"
+        );
+    }
 
     #[test]
     fn editor_and_player_tokens_receive_the_same_fogged_flat_json_observation() {
@@ -153,7 +286,7 @@ mod tests {
             .collect();
         keys.sort_unstable();
         assert_eq!(keys, expected);
-        let game = Game::new(session, vec![]);
+        let mut game = Game::new(session, vec![]);
         let player = game.observe(Role::Seat(seat)).unwrap();
         assert_eq!(game.observe(Role::Editor(seat)).unwrap(), player);
         assert_eq!(player["visible_tiles"], json!([]));

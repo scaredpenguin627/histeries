@@ -1,6 +1,6 @@
 # Histeries architecture
 
-This document describes the Phase 0 boundary. The binding rules are in `AGENTS.md`.
+The binding architecture rules are in `AGENTS.md`.
 
 ## Crate graph
 
@@ -17,7 +17,7 @@ Each arrow points from a lower layer to the next layer. `xtask layers` checks th
 | `ruleset` | Validated TOML tables and the base ruleset data. |
 | `sim` | World state, turn loop, command registry, observations, events, serialization, replay, and sessions. |
 | `ai` | Observation-only strategic, operational, and tactical players. |
-| `net` | Lockstep transport over commands and state hashes. |
+| `net` | Orders regular player commands for hotseat and native TCP sessions. Replicas check the sequence, round and canonical state hash before and after each command. |
 | `mcp` | The `rmcp` server exposing commands and observations with seat permissions. |
 | `cli` | `histeries` subcommands, ASCII maps, self-play, and editor commands. |
 | `client` | A thin observer and presenter built on wgpu, egui, and winit. |
@@ -34,6 +34,8 @@ CLI / MCP / AI / client <-- Observation + Event -- sim session server
 ```
 
 No caller outside `sim` receives a `GameState`. Replays store commands with periodic snapshots so the same registry drives live games, tests, and playback.
+
+Hotseat and LAN share one authoritative command sequence. A trusted LAN peer restores a full simulation save and replays accepted commands locally. Player-facing views still use the observing seat's projection. A peer can catch up from retained commits or resume at a verified checkpoint when the history expires. [Lockstep multiplayer](adr/0022-lockstep-multiplayer.md)
 
 ## Determinism
 

@@ -3,6 +3,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use web_sys::Storage;
 
 pub(crate) const GAME: &str = "histeries.world.v1";
+pub(crate) const HOTSEAT: &str = "histeries.hotseat.v1";
 pub(crate) const SCENARIO: &str = "histeries.scenario.v1";
 
 fn storage() -> Result<Storage, String> {

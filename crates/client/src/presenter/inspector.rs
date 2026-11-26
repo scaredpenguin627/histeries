@@ -1,6 +1,6 @@
 //! Tile inspection, production and seat-wide orders.
 
-use super::{ClientSession, Presenter, Target, atlas, visible};
+use super::{BoardView, Presenter, Target, atlas, visible};
 use eframe::egui::{self, RichText, ScrollArea, Ui, vec2};
 use histeries_sim::{
     BuildingKind, CityObservation, Command, DistrictKind, Feature, Observation, ProductionItem,
@@ -11,10 +11,10 @@ impl Presenter {
     pub(super) fn inspector(
         &mut self,
         ui: &mut Ui,
-        game: &ClientSession,
+        board: &BoardView<'_>,
         order: &mut Option<Command>,
     ) {
-        let view = game.observation();
+        let view = board.observation;
         let Some(tile) = self.selected.and_then(|id| visible(view.board(), id)) else {
             ui.label("Select a visible tile on the map.");
             return;
@@ -67,7 +67,7 @@ impl Presenter {
             }
             let player = view.seat();
             let id = unit.id;
-            ui.add_enabled_ui(game.winner().is_none(), |ui| {
+            ui.add_enabled_ui(board.can_order, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("Move").clicked() {
                         self.start(Target::Move(id));
@@ -106,9 +106,7 @@ impl Presenter {
                 city.population
             ));
             if let Some(own) = view.cities().iter().find(|own| own.id == city.id) {
-                ui.add_enabled_ui(game.winner().is_none(), |ui| {
-                    self.production(ui, view, own, order)
-                });
+                ui.add_enabled_ui(board.can_order, |ui| self.production(ui, view, own, order));
             }
         }
     }
@@ -187,10 +185,10 @@ impl Presenter {
     pub(super) fn realm_controls(
         &mut self,
         ui: &mut Ui,
-        game: &ClientSession,
+        board: &BoardView<'_>,
         order: &mut Option<Command>,
     ) {
-        let view = game.observation();
+        let view = board.observation;
         ui.heading(format!("Seat {}", view.seat().index()));
         ui.label(format!(
             "{} cities   ·   {} units",
@@ -209,7 +207,7 @@ impl Presenter {
             ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
                 for (name, id) in cities.chain(units) {
                     if ui.button(name).clicked() {
-                        self.focus(game, id);
+                        self.focus(view, id);
                         self.realm = false;
                         self.target = None;
                         ui.close();
@@ -220,7 +218,7 @@ impl Presenter {
         ui.separator();
         let progress = view.progress();
         let rules = histeries_ruleset::base_ruleset();
-        ui.add_enabled_ui(game.winner().is_none(), |ui| {
+        ui.add_enabled_ui(board.can_order, |ui| {
             let player = view.seat();
             if let Some(technology) = research_menu(
                 ui,

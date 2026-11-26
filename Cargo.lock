@@ -1242,6 +1242,7 @@ dependencies = [
  "histeries-ai",
  "histeries-hex",
  "histeries-mcp",
+ "histeries-net",
  "histeries-rules-core",
  "histeries-ruleset",
  "histeries-sim",
@@ -1262,6 +1263,7 @@ dependencies = [
  "eframe",
  "histeries-ai",
  "histeries-hex",
+ "histeries-net",
  "histeries-rules-core",
  "histeries-ruleset",
  "histeries-sim",
@@ -1291,6 +1293,7 @@ dependencies = [
  "base64",
  "histeries-ai",
  "histeries-hex",
+ "histeries-net",
  "histeries-rules-core",
  "histeries-sim",
  "rmcp",
@@ -1302,6 +1305,13 @@ dependencies = [
 [[package]]
 name = "histeries-net"
 version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "histeries-rules-core",
+ "histeries-sim",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "histeries-rules-core"
