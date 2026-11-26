@@ -4,7 +4,15 @@ The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-1
 
 ## Phase 4 measurements
 
-The Linux multiplayer acceptance job starts an eight-seat server over loopback, captures the hotseat handoff and LAN player screen, advances two rounds, and compares every peer's reconstructed final hash. The Linux fast artifact includes both PNGs and the host position returned by the last player. [Multiplayer acceptance and measurements](sessions/2026-11-26-phase4-lockstep.md)
+GitHub Actions tested multiplayer source `1c84ea35b1fc` on PR #12. On the four-CPU Linux runner, eight terminal seats played two rounds over TCP loopback. All eight independently reconstructed sequence 16, round 2 and hash `312f74ed01bfecd1`. The Linux artifact includes each seat’s result and 1,200 × 800 captures of the hotseat handoff and native LAN player screen. [Linux measurements and screenshots](https://github.com/scaredpenguin627/histeries/actions/runs/45818090566/artifacts/15117556541) · [Multiplayer session report](sessions/2026-11-26-phase4-lockstep.md)
+
+| Hosted runner | `cargo xtask ci-fast` |
+| --- | ---: |
+| Linux x86_64 | 316.908 s |
+| macOS arm64 | 347.724 s |
+| Windows x86_64 MSVC | 443.374 s |
+
+The same source passed the nightly and weekly stress workflows. [Fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/45818090566) · [Nightly](https://github.com/scaredpenguin627/histeries/actions/runs/45818117340) · [Weekly](https://github.com/scaredpenguin627/histeries/actions/runs/45818121754)
 
 ## Phase 3 measurements
 
