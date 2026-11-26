@@ -2,6 +2,17 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 5 — Late-game ages
+
+The two-seat MCP acceptance game observes three ages in order, rejects the orbital research policy before its unlock, adopts it after the second transition and reaches a science victory. Replaying from the second seat at the end still shows Founding. The native globe trace now records both seats' ages alongside each round hash for the one- and eight-worker comparison on Linux, macOS and Windows. [Session report](sessions/2026-11-27-late-game-ages.md)
+
+| Local paired tournament | Games | Wins | Losses | Win rate | Smoothed Elo difference | One-sided paired sign p |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Current planner versus greedy, seeds 20000–20031 | 64 | 60 | 4 | 93.75% | +451 | 0.0000000037253 |
+| Current planner versus V1, seeds 40000–40031 | 64 | 44 | 20 | 68.75% | +135 | 0.00209045 |
+
+Both Windows GNU release runs used a 500-turn limit, both seat assignments for each seed and zero crashes. The fast workflow repeats these tournaments and uploads per-seed results.
+
 ## Phase 5 — Playable globe
 
 GitHub Actions tested implementation `efbb02dd7c86` on PR #15. Chrome rendered a 1,200 × 657 globe, advanced to round 1, saved, and reopened the spherical match. Rotating the globe changed 18.97% of 16,000 sampled map pixels. [Browser captures and save](https://github.com/scaredpenguin627/histeries/actions/runs/45866260069/artifacts/15141226520)

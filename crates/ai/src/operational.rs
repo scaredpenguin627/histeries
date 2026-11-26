@@ -466,12 +466,20 @@ fn plan_progress(
     let player = observation.seat();
     let progress = observation.progress();
     let rules = base_ruleset();
+    let current_age = progress.age.as_ref().map(|age| age.id.as_str());
+    // The reference controllers retain their original, pre-age policy pool.
+    let plans_age_policies = matches!(policy, Policy::Layered(_, PlannerVersion::V2));
+    let age_allows = |option: &histeries_ruleset::PolicyDefinition| {
+        option.required_age().is_none_or(|required| {
+            plans_age_policies && rules.has_reached_age(current_age, required)
+        })
+    };
     let mut priorities = BTreeSet::new();
     let mut pending = Vec::new();
     if matches!(policy, Policy::Layered(..))
         && let Some(goal) = rules
             .policies()
-            .filter(|policy| policy.science_bonus() > 0)
+            .filter(|policy| age_allows(policy) && policy.science_bonus() > 0)
             .max_by_key(|policy| policy.science_bonus())
             .and_then(|policy| policy.required_civic())
     {
@@ -563,7 +571,7 @@ fn plan_progress(
     };
     let unlocked: Vec<_> = rules
         .policies()
-        .filter(|option| option.required_civic().is_none_or(civics))
+        .filter(|option| age_allows(option) && option.required_civic().is_none_or(civics))
         .collect();
     let mut active: std::collections::BTreeMap<_, _> = progress
         .policies

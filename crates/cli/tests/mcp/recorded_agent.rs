@@ -86,7 +86,16 @@ fn replay_game(archive: &[u8], seed: &str, exchanges: usize, winning_turn: u32) 
                         assert_eq!(resource["uri"], request["params"]["uri"]);
                         toml::from_str(resource["text"].as_str().unwrap()).unwrap()
                     };
-                    assert_eq!(rules(result), rules(recorded));
+                    let mut actual = rules(result);
+                    let tables = actual.as_table_mut().unwrap();
+                    assert!(tables.remove("ages").is_some());
+                    let policies = tables.get_mut("policies").unwrap().as_array_mut().unwrap();
+                    let orbital = policies
+                        .iter()
+                        .position(|p| p["id"].as_str() == Some("policy_orbital_research"))
+                        .expect("base orbital policy");
+                    policies.remove(orbital);
+                    assert_eq!(actual, rules(recorded));
                 }
                 "tools/call" => {
                     let name = request["params"]["name"].as_str().unwrap();
@@ -96,8 +105,14 @@ fn replay_game(archive: &[u8], seed: &str, exchanges: usize, winning_turn: u32) 
                     ));
                     assert_eq!(result["isError"] == true, recorded["isError"] == true);
                     let view = &result["structuredContent"];
+                    let mut historical = view.clone();
+                    if let Some(progress) = historical.get_mut("progress") {
+                        let fields = progress.as_object_mut().unwrap();
+                        assert!(fields.remove("age").is_some());
+                        assert!(fields.remove("available_policies").is_some());
+                    }
                     assert_eq!(
-                        view,
+                        &historical,
                         &recorded["structuredContent"],
                         "exchange {} ({name})",
                         index + 1

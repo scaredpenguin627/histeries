@@ -251,10 +251,24 @@ fn cli_globe_save_atlas_and_replay_use_the_same_tiles() {
 
 #[derive(Debug, Eq, PartialEq)]
 struct GlobeTrace {
-    rounds: Vec<(u32, histeries_sim::StateHash)>,
+    rounds: Vec<(u32, histeries_sim::StateHash, [String; 2])>,
     winner: (histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
     accepted: usize,
     terminal_hash: histeries_sim::StateHash,
+}
+
+fn seat_ages(session: &histeries_sim::Session) -> [String; 2] {
+    [1, 2].map(|seat| {
+        session
+            .observe(histeries_rules_core::PlayerId::new(seat))
+            .unwrap()
+            .progress()
+            .age
+            .as_ref()
+            .unwrap()
+            .id
+            .clone()
+    })
 }
 
 fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
@@ -340,12 +354,17 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
         }
         if reference.turn() != round {
             assert_eq!(reference.turn(), round + 1);
-            boundaries.push((reference.turn(), reference.state_hash()));
+            boundaries.push((
+                reference.turn(),
+                reference.state_hash(),
+                seat_ages(&reference),
+            ));
         } else {
             assert!(reference.winner().is_some(), "incomplete nonterminal round");
         }
         let loaded = Session::from_save_bytes(&reference.save_bytes()).unwrap();
         assert_eq!(loaded.state_hash(), reference.state_hash());
+        assert_eq!(seat_ages(&loaded), seat_ages(&reference));
         for peer in &mut peers {
             peer.sync().unwrap();
             assert_eq!(
@@ -361,13 +380,17 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
     }
     assert!(reconnected && !boundaries.is_empty());
     let log = ReplayLog::decode(&reference.replay().encode()).unwrap();
+    assert!(log.commands().iter().any(|order| matches!(
+        order,
+        Order::PolicyAdopt { policy, .. } if policy == "policy_orbital_research"
+    )));
     let mut playback = log.playback_session();
     let mut reconstructed = Vec::new();
     for order in log.commands() {
         let before = playback.turn();
         playback.dispatch(order.clone()).unwrap();
         if playback.turn() != before {
-            reconstructed.push((playback.turn(), playback.state_hash()));
+            reconstructed.push((playback.turn(), playback.state_hash(), seat_ages(&playback)));
         }
     }
     assert_eq!(reconstructed, boundaries);
@@ -394,11 +417,11 @@ fn a_geodesic_lan_game_reaches_victory_and_replays_every_round() {
     assert_eq!(serial, play_geodesic_lan_game(8));
     if let Some(path) = std::env::var_os("HISTERIES_GLOBE_TRACE") {
         let mut trace = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
-        for (turn, hash) in &serial.rounds {
+        for (turn, hash, ages) in &serial.rounds {
             writeln!(
                 trace,
                 "{}",
-                json!({"turn":turn,"hash":format!("{:016x}",hash.value())})
+                json!({"turn":turn,"hash":format!("{:016x}",hash.value()),"seat_ages":ages})
             )
             .unwrap();
         }

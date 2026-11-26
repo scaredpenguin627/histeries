@@ -33,7 +33,7 @@ pub use map::{
     BoardTopology, Feature, GlobeCell, MapError, MapState, ResourceKind, RiverDirection, Terrain,
     generate_map, generate_map_with_ruleset,
 };
-pub use progression::{PlayerProgress, VictoryKind};
+pub use progression::{AgeObservation, PlayerProgress, VictoryKind};
 pub use unit::{PromotionKind, Unit, UnitKind};
 
 /// The versioned algorithm identifier for per-turn state hashes.
@@ -2103,14 +2103,7 @@ impl SimulationState {
                 return Err(DispatchError::MissingPrerequisite);
             }
             progress.current_technology = Some(technology.to_owned());
-            if progress.technology_progress >= i64::from(definition.cost()) {
-                progress.technology_progress -= i64::from(definition.cost());
-                progress.technologies.insert(technology.to_owned());
-                progress.current_technology = None;
-                true
-            } else {
-                false
-            }
+            progress.resolve_research(city::base_ruleset())
         };
         if completed_immediately {
             self.refresh_policy_slots(player);
@@ -2149,14 +2142,7 @@ impl SimulationState {
                 return Err(DispatchError::MissingPrerequisite);
             }
             progress.current_civic = Some(civic.to_owned());
-            if progress.civic_progress >= i64::from(definition.cost()) {
-                progress.civic_progress -= i64::from(definition.cost());
-                progress.civics.insert(civic.to_owned());
-                progress.current_civic = None;
-                true
-            } else {
-                false
-            }
+            progress.resolve_research(city::base_ruleset())
         };
         if completed_immediately {
             self.refresh_policy_slots(player);
@@ -2193,10 +2179,7 @@ impl SimulationState {
         {
             return Err(DispatchError::PolicyAlreadyActive);
         }
-        if definition
-            .required_civic()
-            .is_some_and(|required| !progress.has_civic(required))
-        {
+        if !progress.permits_policy(definition, progress.reached_ages(city::base_ruleset())) {
             return Err(DispatchError::MissingPrerequisite);
         }
         progress.policies.insert(slot, policy.to_owned());
@@ -2263,22 +2246,7 @@ impl SimulationState {
             if progress.current_civic.is_some() {
                 progress.civic_progress = progress.civic_progress.saturating_add(culture);
             }
-            if let Some(target) = progress.current_technology.clone()
-                && let Some(definition) = city::base_ruleset().technology(&target)
-                && progress.technology_progress >= i64::from(definition.cost())
-            {
-                progress.technology_progress -= i64::from(definition.cost());
-                progress.technologies.insert(target);
-                progress.current_technology = None;
-            }
-            if let Some(target) = progress.current_civic.clone()
-                && let Some(definition) = city::base_ruleset().civic(&target)
-                && progress.civic_progress >= i64::from(definition.cost())
-            {
-                progress.civic_progress -= i64::from(definition.cost());
-                progress.civics.insert(target);
-                progress.current_civic = None;
-            }
+            progress.resolve_research(city::base_ruleset());
             self.refresh_policy_slots(player);
         }
         self.check_victories(rules);
@@ -2584,6 +2552,10 @@ impl BoardObservation {
 /// The seat-scoped projection of progression state.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct ProgressObservation {
+    /// Current age and cumulative capabilities, when the ruleset defines ages.
+    pub age: Option<AgeObservation>,
+    /// Policy IDs whose civic and age requirements the seat meets, in lexical order.
+    pub available_policies: Vec<String>,
     /// Stored science toward the selected technology.
     pub technology_progress: i64,
     /// Stored culture toward the selected civic.
@@ -3760,6 +3732,7 @@ fn validate_progress_state(progress: &PlayerProgress) -> Result<(), Serializatio
     if progress.policy_slots != expected_slots {
         return Err(SerializationError::InvalidProgressState);
     }
+    let ages = progress.reached_ages(ruleset);
     let mut active_policies = BTreeSet::new();
     for policy in progress.policies.values() {
         if !active_policies.insert(policy) {
@@ -3768,10 +3741,7 @@ fn validate_progress_state(progress: &PlayerProgress) -> Result<(), Serializatio
         let definition = ruleset
             .policy(policy)
             .ok_or(SerializationError::InvalidProgressState)?;
-        if definition
-            .required_civic()
-            .is_some_and(|required| !progress.civics.contains(required))
-        {
+        if !progress.permits_policy(definition, ages) {
             return Err(SerializationError::InvalidProgressState);
         }
     }
