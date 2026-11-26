@@ -1,8 +1,11 @@
-//! Lockstep transport boundary.
+//! Deterministic multiplayer command ordering and replica verification.
 
 #![forbid(unsafe_code)]
 
-/// Bootstrap marker proving the crate is wired into the workspace.
-pub fn bootstrap_marker() -> &'static str {
-    "net"
-}
+#[cfg(not(target_arch = "wasm32"))]
+pub mod lan;
+mod lockstep;
+
+pub use lockstep::{
+    Commit, DesyncReport, LockstepHost, Opening, PROTOCOL_VERSION, Position, Replica,
+};

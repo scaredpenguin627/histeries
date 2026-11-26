@@ -1,5 +1,8 @@
 //! Browser entry point and accessible status for the WebGPU canvas.
-use crate::{app::GameApp, game::ClientSession};
+use crate::{
+    app::{GameApp, Screen},
+    game::ClientSession,
+};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
@@ -12,7 +15,7 @@ pub struct WebGame {
 struct BrowserApp {
     game: GameApp,
     canvas: HtmlCanvasElement,
-    announced_turn: Option<u32>,
+    announced: Option<Screen>,
     announced_error: String,
 }
 
@@ -25,14 +28,23 @@ impl eframe::App for BrowserApp {
             self.announced_error.clear();
             self.announced_error.push_str(error);
         }
-        let turn = self.game.displayed_game_turn();
-        if self.announced_turn != turn {
-            let label = match turn {
-                Some(turn) => format!("Histeries strategy map, turn {turn}"),
-                None => "Histeries scenario editor".to_owned(),
+        let screen = self.game.screen();
+        if self.announced != Some(screen) {
+            let label = match screen {
+                Screen::Map(turn) => format!("Histeries strategy map, turn {turn}"),
+                Screen::Editor => "Histeries scenario editor".to_owned(),
+                Screen::Handoff(seat) => {
+                    format!("Histeries hotseat handoff to seat {}", seat.index())
+                }
+                Screen::Result(winner, kind) => {
+                    format!(
+                        "Histeries hotseat result, seat {} won a {kind:?} victory",
+                        winner.index()
+                    )
+                }
             };
             let _ = self.canvas.set_attribute("aria-label", &label);
-            self.announced_turn = turn;
+            self.announced = Some(screen);
         }
     }
 }
@@ -63,7 +75,7 @@ pub async fn start_game(canvas: HtmlCanvasElement, seed: u64) -> Result<WebGame,
                 Ok(Box::new(BrowserApp {
                     game: GameApp::new(cc, game),
                     canvas,
-                    announced_turn: None,
+                    announced: None,
                     announced_error: String::new(),
                 }))
             }),

@@ -2,6 +2,18 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 4 measurements
+
+GitHub Actions tested multiplayer source `1c84ea35b1fc` on PR #12. On the four-CPU Linux runner, eight terminal seats played two rounds over TCP loopback. All eight independently reconstructed sequence 16, round 2 and hash `312f74ed01bfecd1`. The Linux artifact includes each seat’s result and 1,200 × 800 captures of the hotseat handoff and native LAN player screen. [Linux measurements and screenshots](https://github.com/scaredpenguin627/histeries/actions/runs/45818090566/artifacts/15117556541) · [Multiplayer session report](sessions/2026-11-26-phase4-lockstep.md)
+
+| Hosted runner | `cargo xtask ci-fast` |
+| --- | ---: |
+| Linux x86_64 | 316.908 s |
+| macOS arm64 | 347.724 s |
+| Windows x86_64 MSVC | 443.374 s |
+
+The same source passed the nightly and weekly stress workflows. [Fast gate](https://github.com/scaredpenguin627/histeries/actions/runs/45818090566) · [Nightly](https://github.com/scaredpenguin627/histeries/actions/runs/45818117340) · [Weekly](https://github.com/scaredpenguin627/histeries/actions/runs/45818121754)
+
 ## Phase 3 measurements
 
 The final native-client fast gate passed all 140 tests in 152.659 seconds locally, including nine client tests. Four session tests cover fog, rejected orders, deterministic AI turns, save/load, victory and starting units across 32 seeds. Four presenter tests exercise camera geometry, wide and compact layouts, selection and a rejected move followed by a successful retry. One desktop persistence test opens a replaced save and resumes its last saved round. A seed-7 Windows wgpu run read back a 1,500 × 1,000 PNG from the native surface. The seven MCP wire regressions and the existing CLI suite passed after extracting the shared local match host. [Native client report](sessions/2026-11-19-phase3-client.md)

@@ -25,6 +25,10 @@ cargo xtask ci-fast
 
 The repository uses jj for version control. The GitHub Actions fast gate runs the pinned Rust toolchain, formatting, clippy, license checks, tests, and platform checks.
 
+## Multiplayer
+
+Two to eight people can share a screen or join a trusted LAN host. Start a hotseat game from the Game menu, or launch `histeries serve` and connect each seat through the desktop client or interactive terminal. [Host, join and resume a match](docs/multiplayer.md)
+
 ## CLI
 
 The headless CLI uses the simulation command registry and versioned binary files.

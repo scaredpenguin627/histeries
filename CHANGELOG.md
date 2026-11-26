@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added 2–8 player hotseat and LAN play with private handoffs, independent command replay, per-command hash verification and desync diagnostics. Native graphical and terminal clients can join the same LAN host.
+
 - Added a static WebGPU browser client with separate local saves for games and scenario drafts.
 
 - Added a graphical scenario editor with full-map inspection, validated brushes, undo and redo, and interoperable saves. A fog-filtered playtest keeps the original game and draft available when the author returns.

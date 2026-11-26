@@ -11,8 +11,10 @@ use eframe::egui::{
     ScrollArea, Stroke, Ui, Vec2, vec2,
 };
 use histeries_hex::TileId;
-use histeries_rules_core::{CityId, UnitId};
-use histeries_sim::{BoardObservation, Command, DistrictKind, Observation, VisibleTileObservation};
+use histeries_rules_core::{CityId, PlayerId, UnitId};
+use histeries_sim::{
+    BoardObservation, Command, DistrictKind, Observation, VictoryKind, VisibleTileObservation,
+};
 
 use crate::game::ClientSession;
 use atlas::{Camera, GOLD, INK, PAPER};
@@ -84,6 +86,14 @@ impl Target {
     }
 }
 
+/// One seat's projected board and its ability to issue orders this frame.
+pub(crate) struct BoardView<'a> {
+    pub observation: &'a Observation,
+    pub winner: Option<(PlayerId, VictoryKind)>,
+    pub can_order: bool,
+    pub show_seat: bool,
+}
+
 /// Interactive state shared by successive frames of the native game window.
 #[derive(Default)]
 pub struct Presenter {
@@ -96,14 +106,86 @@ pub struct Presenter {
 }
 
 impl Presenter {
+    pub(crate) fn clear_order(&mut self) {
+        self.target = None;
+        self.feedback = None;
+    }
     /// Paints a frame and routes any submitted order through the seat's session.
     pub fn show(&mut self, root: &mut Ui, game: &mut ClientSession, menu: impl FnOnce(&mut Ui)) {
+        if let Some(seat) = game.handoff_seat() {
+            egui::CentralPanel::default().show(root, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(ui.available_height() / 3.0);
+                    ui.heading(format!("Pass to seat {}", seat.index()));
+                    if ui.button("Reveal my map").clicked() {
+                        game.confirm_handoff();
+                        ui.ctx().request_repaint();
+                    }
+                    menu(ui);
+                });
+            });
+            return;
+        }
+        if game.is_hotseat()
+            && let Some((winner, victory)) = game.winner()
+        {
+            egui::CentralPanel::default().show(root, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(ui.available_height() / 3.0);
+                    ui.heading(format!("Seat {} won", winner.index()));
+                    ui.label(format!("{victory:?} victory"));
+                    menu(ui);
+                });
+            });
+            return;
+        }
+        let board = BoardView {
+            observation: game.observation(),
+            winner: game.winner(),
+            can_order: game.winner().is_none(),
+            show_seat: game.is_hotseat(),
+        };
+        if let Some(order) = self.board(root, board, menu) {
+            let end_turn = matches!(order, Command::TurnEnd { .. });
+            let destination = match &order {
+                Command::UnitMove { destination, .. } => Some(*destination),
+                _ => None,
+            };
+            let name = order.id();
+            match game.dispatch(order) {
+                Ok(()) => {
+                    self.clear_order();
+                    if let Some(tile) = destination {
+                        self.selected = Some(tile);
+                    }
+                    self.feedback = (!end_turn).then(|| (format!("Accepted  ·  {name}"), false));
+                }
+                Err(reason) => self.feedback = Some((reason, true)),
+            }
+        }
+        if game.is_hotseat() && (game.handoff_seat().is_some() || game.winner().is_some()) {
+            *self = Self::default();
+            egui::Popup::close_all(root.ctx());
+            root.ctx().request_discard("show the public hotseat screen");
+            root.ctx().request_repaint();
+        }
+    }
+
+    /// Draws only the supplied observation and returns at most one proposed seat command.
+    pub(crate) fn board(
+        &mut self,
+        root: &mut Ui,
+        board: BoardView<'_>,
+        menu: impl FnOnce(&mut Ui),
+    ) -> Option<Command> {
         let compact = root.available_width() < 690.0;
         let mut command = None;
         let mut end_turn = false;
-        self.sync_selection(game);
-        let view = game.observation();
-        let ended = game.winner().is_some();
+        let view = board.observation;
+        self.sync_selection(view);
+        if !board.can_order {
+            self.target = None;
+        }
         let style = root.style_mut();
         style.visuals = egui::Visuals::dark();
         style.visuals.override_text_color = Some(PAPER);
@@ -128,13 +210,13 @@ impl Presenter {
                             .color(GOLD)
                             .strong(),
                     );
-                    if !compact {
+                    if !compact || board.show_seat {
                         ui.weak(format!("Seat {}", view.seat().index()));
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         end_turn = ui
                             .add_enabled(
-                                !ended,
+                                board.can_order,
                                 Button::new(RichText::new("End turn").strong().color(INK))
                                     .fill(GOLD),
                             )
@@ -158,7 +240,7 @@ impl Presenter {
                         .clicked()
                         && let Some(id) = self.selected.or_else(|| home(view))
                     {
-                        self.focus(game, id);
+                        self.focus(view, id);
                     }
                     if !compact {
                         ui.weak("Drag to pan   ·   Scroll to zoom");
@@ -180,8 +262,9 @@ impl Presenter {
                     ui.selectable_value(&mut self.realm, true, "Realm");
                 });
                 ui.separator();
-                ScrollArea::vertical().show(ui, |ui| {
-                    if let Some((winner, kind)) = game.winner() {
+                let inspector_scroll = ScrollArea::vertical().id_salt(view.seat().index());
+                inspector_scroll.show(ui, |ui| {
+                    if let Some((winner, kind)) = board.winner {
                         let name = if winner == view.seat() {
                             "You won".to_owned()
                         } else {
@@ -202,64 +285,47 @@ impl Presenter {
                         }
                     }
                     if self.realm {
-                        self.realm_controls(ui, game, &mut command);
+                        self.realm_controls(ui, &board, &mut command);
                     } else {
-                        self.inspector(ui, game, &mut command);
+                        self.inspector(ui, &board, &mut command);
                     }
                 });
             });
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(root, |ui| {
-                self.map(ui, game, &mut command);
+                self.map(ui, view, &mut command);
             });
         if end_turn {
-            self.target = None;
-            self.feedback = match game.end_turn() {
-                Ok(()) => None,
-                Err(reason) => Some((reason, true)),
-            };
-        } else if let Some(order) = command {
-            let destination = match &order {
-                Command::UnitMove { destination, .. } => Some(*destination),
-                _ => None,
-            };
-            let name = order.id();
-            match game.dispatch(order) {
-                Ok(()) => {
-                    self.target = None;
-                    if let Some(tile) = destination {
-                        self.selected = Some(tile);
-                    }
-                    self.feedback = Some((format!("Accepted  ·  {name}"), false));
-                }
-                Err(reason) => self.feedback = Some((reason, true)),
-            }
+            Some(Command::TurnEnd {
+                player: view.seat(),
+            })
+        } else {
+            command
         }
     }
 
-    fn focus(&mut self, game: &ClientSession, tile: TileId) {
-        if let Some(point) = game.embedding(tile) {
+    fn focus(&mut self, view: &Observation, tile: TileId) {
+        if let Some(point) = visible(view.board(), tile).map(|tile| tile.embedding) {
             self.camera.center = Camera::world(point);
             self.selected = Some(tile);
         }
     }
 
-    fn sync_selection(&mut self, game: &ClientSession) {
+    fn sync_selection(&mut self, view: &Observation) {
         if !self.initialized {
-            self.selected = home(game.observation());
+            self.selected = home(view);
         }
         if self
             .selected
-            .is_some_and(|id| visible(game.observation().board(), id).is_none())
+            .is_some_and(|id| visible(view.board(), id).is_none())
         {
             self.selected = None;
             self.target = None;
         }
     }
 
-    fn map(&mut self, ui: &mut Ui, game: &ClientSession, command: &mut Option<Command>) {
-        let view = game.observation();
+    fn map(&mut self, ui: &mut Ui, view: &Observation, command: &mut Option<Command>) {
         if !self.initialized && ui.available_rect_before_wrap().is_positive() {
             self.camera
                 .fit(view.board(), ui.available_rect_before_wrap());
@@ -272,8 +338,8 @@ impl Presenter {
             self.target = None;
         }
         let locate = |id| {
-            game.embedding(id)
-                .map(|p| self.camera.project(p, rect))
+            visible(view.board(), id)
+                .map(|tile| self.camera.project(tile.embedding, rect))
                 .filter(|center| rect.expand(radius).contains(*center))
         };
         if let Some(center) = self.selected.and_then(locate) {

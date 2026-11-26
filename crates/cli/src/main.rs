@@ -2,6 +2,8 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(not(target_family = "wasm"))]
+mod lan;
 #[cfg(all(
     feature = "heap-profile",
     any(
@@ -54,6 +56,10 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "memgate" => memgate::run(&args[1..]),
         #[cfg(not(target_family = "wasm"))]
         "mcp" => command_mcp(&args[1..]),
+        #[cfg(not(target_family = "wasm"))]
+        "serve" => lan::host(&args[1..]),
+        #[cfg(not(target_family = "wasm"))]
+        "lan" => lan::run(&args[1..]),
         "map" => command_map(&args[1..]),
         "editor" | "scenario-editor" => command_editor(&args[1..]),
         "help" | "--help" | "-h" => {
@@ -66,6 +72,18 @@ fn run(args: Vec<String>) -> Result<(), String> {
 
 #[cfg(not(target_family = "wasm"))]
 fn command_mcp(args: &[String]) -> Result<(), String> {
+    if args
+        .iter()
+        .any(|argument| argument == "--connect" || argument == "--seat")
+    {
+        validate_flags(args, &["--connect", "--seat"], 0)?;
+        let address = flag_string(args, "--connect")?
+            .ok_or("--connect IP:PORT is required")?
+            .parse()
+            .map_err(|_| "--connect requires an IP address and port")?;
+        let seat = flag_u32(args, "--seat")?.ok_or("--seat ID is required")?;
+        return histeries_mcp::connect(address, PlayerId::new(seat));
+    }
     validate_flags(args, &["--players", "--seed", "--listen", "--state"], 0)?;
     let listen = flag_string(args, "--listen")?
         .map(|s| {
@@ -73,20 +91,29 @@ fn command_mcp(args: &[String]) -> Result<(), String> {
                 .map_err(|_| "--listen requires an IP address and port")
         })
         .transpose()?;
-    let session = if let Some(path) = flag_string(args, "--state")? {
+    let session = interactive_session(args, |seed, players| {
+        selfplay::scenario(seed, players, "small")
+    })?;
+    histeries_mcp::serve(session, listen)
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn interactive_session(
+    args: &[String],
+    new_session: impl FnOnce(u64, u32) -> Result<Session, String>,
+) -> Result<Session, String> {
+    if let Some(path) = flag_string(args, "--state")? {
         if flag_string(args, "--players")?.is_some() || flag_string(args, "--seed")?.is_some() {
             return Err("--state supplies the seats and map; omit --players and --seed".into());
         }
         let bytes = fs::read(&path).map_err(|error| format!("read {path}: {error}"))?;
-        Session::from_save_bytes(&bytes).map_err(|error| format!("decode {path}: {error}"))?
+        Session::from_save_bytes(&bytes).map_err(|error| format!("decode {path}: {error}"))
     } else {
-        selfplay::scenario(
+        new_session(
             flag_u64(args, "--seed")?.unwrap_or(0),
             flag_u32(args, "--players")?.unwrap_or(2),
-            "small",
-        )?
-    };
-    histeries_mcp::serve(session, listen)
+        )
+    }
 }
 
 fn command_new(args: &[String]) -> Result<(), String> {
@@ -518,7 +545,7 @@ fn seed_bytes(seed: u64) -> [u8; 32] {
 }
 
 fn usage() -> String {
-    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random|v1] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N] [--listen 127.0.0.1:PORT]\n  map STATE\n  editor STATE package --package DIRECTORY --player N [--output PATH] [--replay-output PATH]\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
+    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|serve|lan|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random|v1] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N] [--listen 127.0.0.1:PORT]\n  mcp --connect IP:PORT --seat ID\n  serve (or lan host) [--state PATH | --players N --seed N] [--listen IP:PORT]\n  lan join --connect IP:PORT --seat ID\n  map STATE\n  editor STATE package --package DIRECTORY --player N [--output PATH] [--replay-output PATH]\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
 }
 
 #[cfg(test)]

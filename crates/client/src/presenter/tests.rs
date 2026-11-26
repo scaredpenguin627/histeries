@@ -26,16 +26,25 @@ fn frame(
     size: Vec2,
     events: Vec<Event>,
 ) -> FullOutput {
+    draw_frame(ctx, size, events, |ui| {
+        state.show(ui, game, |ui| {
+            ui.label("Game");
+        })
+    })
+}
+
+fn draw_frame(
+    ctx: &Context,
+    size: Vec2,
+    events: Vec<Event>,
+    draw: impl FnMut(&mut Ui),
+) -> FullOutput {
     let input = RawInput {
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
         events,
         ..Default::default()
     };
-    let mut output = ctx.run_ui(input, |ui| {
-        state.show(ui, game, |ui| {
-            ui.label("Game");
-        })
-    });
+    let mut output = ctx.run_ui(input, draw);
     output.textures_delta.clear();
     output
 }
@@ -47,27 +56,150 @@ fn click(
     size: Vec2,
     at: Pos2,
 ) -> FullOutput {
+    click_at(at, |events| frame(ctx, state, game, size, events))
+}
+
+fn click_at(at: Pos2, mut draw: impl FnMut(Vec<Event>) -> FullOutput) -> FullOutput {
     let button = |pressed| Event::PointerButton {
         pos: at,
         button: PointerButton::Primary,
         pressed,
         modifiers: Modifiers::NONE,
     };
-    frame(
-        ctx,
-        state,
-        game,
-        size,
-        vec![Event::PointerMoved(at), button(true)],
+    draw(vec![Event::PointerMoved(at), button(true)]);
+    draw(vec![Event::PointerMoved(at), button(false)]);
+    draw(vec![])
+}
+
+fn labels(output: &FullOutput) -> Vec<&str> {
+    output
+        .shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            Shape::Text(text) => Some(text.galley.text()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn completed_hotseat_displays_only_the_result_and_can_start_a_new_game() {
+    use eframe::App as _;
+    let (mut fixture, capture) = crate::game::tests::winning_capture();
+    fixture.dispatch(capture).unwrap();
+    let finished = ClientSession::hotseat_from_save(&fixture.save_bytes()).unwrap();
+    let ctx = Context::default();
+    let mut app = crate::GameApp::new(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        finished,
     );
-    frame(
-        ctx,
-        state,
-        game,
-        size,
-        vec![Event::PointerMoved(at), button(false)],
+    let mut host = eframe::Frame::_new_kittest();
+    let mut draw = |events| {
+        draw_frame(&ctx, vec2(1024.0, 700.0), events, |ui| {
+            app.ui(ui, &mut host)
+        })
+    };
+    draw(vec![]);
+    let mut screen = draw(vec![]);
+    assert_eq!(
+        labels(&screen),
+        ["Seat 2 won", "Domination victory", "Game"]
     );
-    frame(ctx, state, game, size, vec![])
+    for label in ["Game", "New single-player game", "Start game"] {
+        screen = click_at(text_center(&screen, label), &mut draw);
+    }
+    text_center(&screen, "End turn");
+}
+
+#[test]
+fn game_menu_starts_hotseat_and_hides_the_map_between_two_real_turns() {
+    use eframe::App as _;
+    let ctx = Context::default();
+    let mut app = crate::GameApp::new(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        ClientSession::new(7).unwrap(),
+    );
+    let mut host = eframe::Frame::_new_kittest();
+    let mut draw = |events| {
+        draw_frame(&ctx, vec2(1024.0, 700.0), events, |ui| {
+            app.ui(ui, &mut host)
+        })
+    };
+    draw(vec![]);
+    let mut screen = draw(vec![]);
+    for label in ["Game", "New hotseat game", "Start hotseat"] {
+        screen = click_at(text_center(&screen, label), &mut draw);
+    }
+    for seat in 1..=2 {
+        assert_eq!(
+            labels(&screen),
+            [
+                format!("Pass to seat {seat}"),
+                "Reveal my map".into(),
+                "Game".into()
+            ]
+        );
+        screen = click_at(text_center(&screen, "Reveal my map"), &mut draw);
+        text_center(&screen, &format!("Seat {seat}"));
+        text_center(&screen, "Turn 0");
+        if seat == 1 {
+            screen = click_at(text_center(&screen, "Game"), &mut draw);
+            let menu = labels(&screen);
+            assert!(menu.contains(&"Save hotseat game"));
+            assert!(!menu.contains(&"Scenario editor"));
+            screen = click_at(text_center(&screen, "Game"), &mut draw);
+        }
+        screen = click_at(text_center(&screen, "End turn"), &mut draw);
+    }
+    assert_eq!(labels(&screen), ["Pass to seat 1", "Reveal my map", "Game"]);
+    screen = click_at(text_center(&screen, "Reveal my map"), &mut draw);
+    text_center(&screen, "Turn 1");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn saves_the_covered_handoff_before_the_next_player_reveals_the_map() {
+    use eframe::App as _;
+    let ctx = Context::default();
+    let mut app = crate::GameApp::new(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        ClientSession::hotseat(7, 2).unwrap(),
+    );
+    let mut host = eframe::Frame::_new_kittest();
+    let mut draw = |events| {
+        draw_frame(&ctx, vec2(1024.0, 700.0), events, |ui| {
+            app.ui(ui, &mut host)
+        })
+    };
+    draw(vec![]);
+    let mut screen = draw(vec![]);
+    for label in ["Reveal my map", "End turn", "Game", "Save hotseat game"] {
+        screen = click_at(text_center(&screen, label), &mut draw);
+    }
+    text_center(&screen, "Pass to seat 2");
+    assert!(!labels(&screen).contains(&"End turn"));
+
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("handoff.hst");
+    click_at(text_center(&screen, "hotseat.hst"), &mut draw);
+    screen = draw(vec![
+        Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::COMMAND,
+        },
+        Event::Paste(path.display().to_string()),
+    ]);
+    screen = click_at(text_center(&screen, "Save"), &mut draw);
+    assert_eq!(labels(&screen), ["Pass to seat 2", "Reveal my map", "Game"]);
+    let saved = std::fs::read(path).unwrap();
+    let mut resumed = ClientSession::hotseat_from_save(&saved).unwrap();
+    assert_eq!(resumed.handoff_seat(), Some(PlayerId::new(2)));
+    resumed.confirm_handoff();
+    assert_eq!(resumed.observation().seat(), PlayerId::new(2));
+    assert_eq!(resumed.observation().turn(), 0);
 }
 
 fn text_center(output: &FullOutput, label: &str) -> Pos2 {
@@ -184,6 +316,32 @@ fn unit_badge(output: &FullOutput) -> Pos2 {
             _ => None,
         })
         .expect("the opening unit marker is visible")
+}
+
+#[test]
+fn a_waiting_seat_can_inspect_its_warrior_without_issuing_orders() {
+    let ctx = Context::default();
+    crate::font::install(&ctx);
+    let game = ClientSession::new(7).unwrap();
+    let mut presenter = Presenter::default();
+    let mut draw = |events| {
+        draw_frame(&ctx, vec2(1024.0, 700.0), events, |ui| {
+            let board = BoardView {
+                observation: game.observation(),
+                winner: None,
+                can_order: false,
+                show_seat: true,
+            };
+            assert!(presenter.board(ui, board, |_| {}).is_none());
+        })
+    };
+    draw(vec![]);
+    let mut screen = draw(vec![]);
+    screen = click_at(unit_badge(&screen), &mut draw);
+    for control in ["Hold", "End turn"] {
+        screen = click_at(text_center(&screen, control), &mut draw);
+    }
+    text_center(&screen, "Turn 0");
 }
 
 #[test]

@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 histeries-ai = { path = "../ai" }
 histeries-hex = { path = "../hex" }
+histeries-net = { path = "../net" }
 histeries-rules-core = { path = "../rules-core" }
 histeries-ruleset = { path = "../ruleset" }
 histeries-sim = { path = "../sim", features = ["extension-files"] }

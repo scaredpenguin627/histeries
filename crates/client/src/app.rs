@@ -11,23 +11,39 @@ use crate::{
 #[derive(Clone, Copy, PartialEq)]
 enum FileAction {
     New,
+    NewHotseat,
     FromGame,
     Open,
+    OpenHotseat,
     Save,
 }
 
 impl FileAction {
-    fn title(self, editing: bool) -> &'static str {
+    fn title(self, editing: bool, hotseat: bool) -> &'static str {
         match self {
             Self::New if editing => "New blank scenario",
+            Self::New if hotseat => "New single-player game",
             Self::New => "New game",
+            Self::NewHotseat => "New hotseat game",
             Self::FromGame => "Copy current game into editor",
             Self::Open if editing => "Open scenario",
+            Self::Open if hotseat => "Open single-player game",
             Self::Open => "Open game",
+            Self::OpenHotseat => "Open as hotseat",
             Self::Save if editing => "Save scenario",
+            Self::Save if hotseat => "Save hotseat game",
             Self::Save => "Save game",
         }
     }
+}
+
+#[cfg(any(test, target_arch = "wasm32"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Screen {
+    Editor,
+    Map(u32),
+    Handoff(histeries_rules_core::PlayerId),
+    Result(histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
 }
 
 /// The portable 2D game interface presented by a native or web eframe host.
@@ -41,8 +57,13 @@ pub struct GameApp {
     presenter: Presenter,
     dialog: Option<FileAction>,
     seed: String,
+    hotseat_players: u32,
+    #[cfg(target_arch = "wasm32")]
+    hotseat_source: &'static str,
     #[cfg(not(target_arch = "wasm32"))]
     game_path: String,
+    #[cfg(not(target_arch = "wasm32"))]
+    hotseat_path: String,
     #[cfg(not(target_arch = "wasm32"))]
     scenario_path: String,
     error: String,
@@ -55,15 +76,23 @@ impl GameApp {
     }
 
     #[cfg(any(test, target_arch = "wasm32"))]
-    pub(crate) fn displayed_game_turn(&self) -> Option<u32> {
+    pub(crate) fn screen(&self) -> Screen {
         if self.editing {
-            return None;
+            return Screen::Editor;
         }
         let active = self
             .playtest
             .as_ref()
             .map_or(&self.game, |(trial, _)| trial);
-        Some(active.observation().turn())
+        if let Some(player) = active.handoff_seat() {
+            Screen::Handoff(player)
+        } else if active.is_hotseat()
+            && let Some((winner, kind)) = active.winner()
+        {
+            Screen::Result(winner, kind)
+        } else {
+            Screen::Map(active.observation().turn())
+        }
     }
 
     /// Presents an existing session and initializes the client font atlas.
@@ -83,8 +112,13 @@ impl GameApp {
             presenter: Presenter::default(),
             dialog: None,
             seed: "7".into(),
+            hotseat_players: 2,
+            #[cfg(target_arch = "wasm32")]
+            hotseat_source: crate::web_storage::HOTSEAT,
             #[cfg(not(target_arch = "wasm32"))]
             game_path: "histeries.hst".into(),
+            #[cfg(not(target_arch = "wasm32"))]
+            hotseat_path: "hotseat.hst".into(),
             #[cfg(not(target_arch = "wasm32"))]
             scenario_path: "scenario.hst".into(),
             error: String::new(),
@@ -92,6 +126,9 @@ impl GameApp {
     }
 
     fn open_editor(&mut self) -> Result<(), String> {
+        if self.game.is_hotseat() {
+            return Err("The scenario editor is available in single-player games.".into());
+        }
         if self.editor.is_none() {
             self.editor = Some(Editor::open(
                 self.game.save_bytes(),
@@ -127,6 +164,9 @@ impl GameApp {
     fn execute(&mut self, action: FileAction) -> Result<(), String> {
         if self.editing {
             let editor = match action {
+                FileAction::NewHotseat | FileAction::OpenHotseat => {
+                    return Err("Return to the game first.".into());
+                }
                 #[cfg(target_arch = "wasm32")]
                 FileAction::Open => Editor::open(
                     crate::web_storage::read(crate::web_storage::SCENARIO)?,
@@ -169,25 +209,46 @@ impl GameApp {
                 crate::web_storage::GAME,
             )?)?,
             #[cfg(target_arch = "wasm32")]
+            FileAction::OpenHotseat => {
+                ClientSession::hotseat_from_save(&crate::web_storage::read(self.hotseat_source)?)?
+            }
+            #[cfg(target_arch = "wasm32")]
             FileAction::Save => {
                 return crate::web_storage::write(
-                    crate::web_storage::GAME,
+                    if self.game.is_hotseat() {
+                        crate::web_storage::HOTSEAT
+                    } else {
+                        crate::web_storage::GAME
+                    },
                     &self.game.save_bytes(),
                 );
             }
-            FileAction::New => {
+            FileAction::New | FileAction::NewHotseat => {
                 let seed = self
                     .seed
                     .trim()
                     .parse()
                     .map_err(|_| "Enter an unsigned integer seed.")?;
-                ClientSession::new(seed)?
+                if action == FileAction::NewHotseat {
+                    ClientSession::hotseat(seed, self.hotseat_players)?
+                } else {
+                    ClientSession::new(seed)?
+                }
             }
             #[cfg(not(target_arch = "wasm32"))]
             FileAction::Open => crate::native::open(std::path::Path::new(&self.game_path))?,
             #[cfg(not(target_arch = "wasm32"))]
+            FileAction::OpenHotseat => ClientSession::hotseat_from_save(
+                &crate::native::open_bytes(std::path::Path::new(&self.hotseat_path))?,
+            )?,
+            #[cfg(not(target_arch = "wasm32"))]
             FileAction::Save => {
-                return crate::native::save(std::path::Path::new(&self.game_path), &self.game);
+                let path = if self.game.is_hotseat() {
+                    &self.hotseat_path
+                } else {
+                    &self.game_path
+                };
+                return crate::native::save(std::path::Path::new(path), &self.game);
             }
         };
         self.editor = None;
@@ -199,7 +260,7 @@ impl GameApp {
 
     fn file_dialog(&mut self, ctx: &egui::Context, action: FileAction) {
         egui::Modal::new(egui::Id::unique("session-file")).show(ctx, |ui| {
-            ui.heading(action.title(self.editing));
+            ui.heading(action.title(self.editing, self.game.is_hotseat()));
             let replaces_session = action != FileAction::Save;
             if replaces_session && self.editor.is_some() {
                 ui.label(if self.editing {
@@ -213,11 +274,28 @@ impl GameApp {
             match action {
                 #[cfg(target_arch = "wasm32")]
                 FileAction::Open | FileAction::Save => {
-                    let slot = if self.editing { "scenario" } else { "game" };
+                    let slot = if self.editing {
+                        "scenario"
+                    } else if action == FileAction::Save && self.game.is_hotseat() {
+                        "hotseat"
+                    } else {
+                        "game"
+                    };
                     if action == FileAction::Save {
                         ui.label(format!("Replaces this site's {slot} slot."));
                     } else {
                         ui.label(format!("Read this site's {slot} slot."));
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                FileAction::OpenHotseat => {
+                    ui.label("Resume from this site's save slot");
+                    for (slot, label) in [
+                        (crate::web_storage::HOTSEAT, "Hotseat"),
+                        (crate::web_storage::GAME, "Single-player"),
+                        (crate::web_storage::SCENARIO, "Scenario"),
+                    ] {
+                        ui.radio_value(&mut self.hotseat_source, slot, label);
                     }
                 }
                 FileAction::New if self.editing => {
@@ -233,16 +311,29 @@ impl GameApp {
                         });
                     }
                 }
-                FileAction::New => {
+                FileAction::New | FileAction::NewHotseat => {
                     ui.label("Map seed");
                     ui.text_edit_singleline(&mut self.seed);
+                    if action == FileAction::NewHotseat {
+                        ui.horizontal(|ui| {
+                            ui.label("Human players");
+                            ui.add(
+                                egui::DragValue::new(&mut self.hotseat_players)
+                                    .range(histeries_sim::ScenarioDraft::PLAYERS),
+                            );
+                        });
+                    }
                 }
                 FileAction::FromGame => {}
                 #[cfg(not(target_arch = "wasm32"))]
-                FileAction::Open | FileAction::Save => {
+                FileAction::Open | FileAction::OpenHotseat | FileAction::Save => {
                     ui.label("Save file path (.hst)");
                     let path = if self.editing {
                         &mut self.scenario_path
+                    } else if action == FileAction::OpenHotseat
+                        || (action == FileAction::Save && self.game.is_hotseat())
+                    {
+                        &mut self.hotseat_path
                     } else {
                         &mut self.game_path
                     };
@@ -257,15 +348,21 @@ impl GameApp {
                 let label = match action {
                     FileAction::New if self.editing => "Create blank map",
                     FileAction::New => "Start game",
+                    FileAction::NewHotseat => "Start hotseat",
                     FileAction::FromGame => "Replace with game snapshot",
-                    FileAction::Open => "Open",
+                    FileAction::Open | FileAction::OpenHotseat => "Open",
                     #[cfg(not(target_arch = "wasm32"))]
                     FileAction::Save if replacing_file => "Replace save",
                     FileAction::Save => "Save",
                 };
                 if ui.button(label).clicked() {
                     match self.execute(action) {
-                        Ok(()) => self.close_dialog(),
+                        Ok(()) => {
+                            self.close_dialog();
+                            if matches!(action, FileAction::NewHotseat | FileAction::OpenHotseat) {
+                                ctx.request_discard("show the hotseat handoff");
+                            }
+                        }
                         Err(error) => self.error = error,
                     }
                 }
@@ -294,6 +391,7 @@ impl eframe::App for GameApp {
         let mut file = None;
         let editing = self.editing;
         let playtesting = self.playtest.is_some();
+        let hotseat = self.game.is_hotseat();
         let menu = |ui: &mut egui::Ui| {
             ui.menu_button(
                 if editing {
@@ -316,14 +414,14 @@ impl eframe::App for GameApp {
                         return;
                     }
                     for action in [FileAction::New, FileAction::Open, FileAction::Save] {
-                        if ui.button(action.title(editing)).clicked() {
+                        if ui.button(action.title(editing, hotseat)).clicked() {
                             file = Some(action);
                             ui.close();
                         }
                     }
                     ui.separator();
                     if editing {
-                        if ui.button(FileAction::FromGame.title(true)).clicked() {
+                        if ui.button(FileAction::FromGame.title(true, false)).clicked() {
                             file = Some(FileAction::FromGame);
                             ui.close();
                         }
@@ -339,9 +437,17 @@ impl eframe::App for GameApp {
                             resume = true;
                             ui.close();
                         }
-                    } else if ui.button("Scenario editor").clicked() {
-                        edit = true;
-                        ui.close();
+                    } else {
+                        if !hotseat && ui.button("Scenario editor").clicked() {
+                            edit = true;
+                            ui.close();
+                        }
+                        for action in [FileAction::NewHotseat, FileAction::OpenHotseat] {
+                            if ui.button(action.title(false, hotseat)).clicked() {
+                                file = Some(action);
+                                ui.close();
+                            }
+                        }
                     }
                 },
             );
@@ -371,6 +477,10 @@ impl eframe::App for GameApp {
             self.mods.save_changes(frame.storage_mut());
         }
         if let Some(action) = file {
+            #[cfg(target_arch = "wasm32")]
+            {
+                self.hotseat_source = crate::web_storage::HOTSEAT;
+            }
             self.dialog = Some(action);
             self.error.clear();
         }
@@ -417,20 +527,17 @@ mod tests {
         assert_ne!(trial.save_bytes(), live);
         assert_ne!(trial.save_bytes(), draft);
         let trial_turn = trial.observation().turn();
-        assert_eq!(app.displayed_game_turn(), Some(trial_turn));
+        assert_eq!(app.screen(), Screen::Map(trial_turn));
         app.open_editor().unwrap();
         assert!(app.editing && app.playtest.is_none());
-        assert_eq!(app.displayed_game_turn(), None);
+        assert_eq!(app.screen(), Screen::Editor);
         assert_eq!(app.editor.as_ref().unwrap().bytes(), draft);
         app.dialog = Some(FileAction::New);
         app.error = "previous dialog error".into();
         app.return_to_game();
         assert!(app.dialog.is_none() && app.error.is_empty());
         assert_eq!(app.game.save_bytes(), live);
-        assert_eq!(
-            app.displayed_game_turn(),
-            Some(app.game.observation().turn())
-        );
+        assert_eq!(app.screen(), Screen::Map(app.game.observation().turn()));
         assert!(!app.editing && app.playtest.is_none());
 
         app.open_editor().unwrap();
@@ -510,6 +617,47 @@ mod tests {
             assert_eq!(app.game.save_bytes(), live);
             assert!(app.editing && app.playtest.is_none());
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn hotseat_files_resume_unfinished_humans_and_preserve_the_solo_slot() {
+        let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
+        let directory = tempfile::tempdir().unwrap();
+        app.game_path = directory.path().join("solo.hst").display().to_string();
+        app.hotseat_path = directory.path().join("shared.hst").display().to_string();
+        app.execute(FileAction::Save).unwrap();
+        let solo = app.game.save_bytes();
+        app.open_editor().unwrap();
+        app.return_to_game();
+        app.hotseat_players = 3;
+        app.execute(FileAction::NewHotseat).unwrap();
+        assert!(app.editor.is_none() && app.playtest.is_none());
+        assert!(app.open_editor().is_err());
+        assert!(!app.editing);
+        app.game.confirm_handoff();
+        app.game.end_turn().unwrap();
+        app.execute(FileAction::Save).unwrap();
+        let shared = app.game.save_bytes();
+        assert_ne!(shared, solo);
+        assert_eq!(std::fs::read(&app.game_path).unwrap(), solo);
+        assert_eq!(std::fs::read(&app.hotseat_path).unwrap(), shared);
+        app.execute(FileAction::Open).unwrap();
+        assert!(!app.game.is_hotseat());
+        assert_eq!(app.game.save_bytes(), solo);
+        app.execute(FileAction::OpenHotseat).unwrap();
+        assert_eq!(app.game.save_bytes(), shared);
+        assert_eq!(
+            app.screen(),
+            Screen::Handoff(histeries_rules_core::PlayerId::new(2))
+        );
+        app.hotseat_path = app.game_path.clone();
+        app.execute(FileAction::OpenHotseat).unwrap();
+        assert_eq!(app.game.save_bytes(), solo);
+        assert_eq!(
+            app.screen(),
+            Screen::Handoff(histeries_rules_core::PlayerId::new(1))
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
