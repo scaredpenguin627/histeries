@@ -1337,6 +1337,7 @@ dependencies = [
  "histeries-hex",
  "histeries-rules-core",
  "histeries-ruleset",
+ "petgraph",
  "serde",
  "toml",
  "wasmi",

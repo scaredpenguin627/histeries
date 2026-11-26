@@ -208,3 +208,31 @@ wait_for_scenario_save "$previous_scenario"
 slot scenario | base64 --decode >"$observed/after-woodland.hst"
 if cmp -s "$observed/before-woodland.hst" "$observed/after-woodland.hst"; then fail "Applying the imported package left the draft unchanged."; fi
 echo "Saved before and after Woodland for comparison with the native one-tile edit."
+
+# Open a seeded spherical campaign through the public URL, orbit it, and resume its save.
+post "session/$session/url" "$(jq -nc --arg url "$origin/?globe=3&seed=7" '{url:$url}')" >/dev/null
+globe_turn() {
+    wait_for "return document.querySelector('canvas')?.getAttribute('aria-label') === 'Histeries 3D globe, turn $1'" "Globe did not reach turn $1."
+}
+globe_turn 0
+wait_for_paint
+screenshot target/gates/web-globe.png
+post "session/$session/actions" '{"actions":[{"type":"pointer","id":"mouse","parameters":{"pointerType":"mouse"},"actions":[{"type":"pointerMove","origin":"viewport","x":350,"y":300},{"type":"pointerDown","button":2},{"type":"pointerMove","origin":"viewport","x":475,"y":345,"duration":400},{"type":"pointerUp","button":2}]}]}' >/dev/null
+wait_for_paint
+globe_turn 0
+screenshot target/gates/web-globe-orbit.png
+bash scripts/measure-3d-frame.sh target/gates/web-globe.png target/gates/web-globe-orbit.png > target/gates/web-globe-orbit.json
+click "$x" 24
+globe_turn 1
+previous_game=$(slot world)
+game_menu
+click 153 97
+confirm
+wait_for "const save=localStorage.getItem('histeries.world.v1'); return Boolean(save) && save !== '$previous_game';" "The globe save was not written."
+slot world | base64 --decode >"$observed/globe-turn-1.hst"
+post "session/$session/url" "$(jq -nc --arg url "$origin/" '{url:$url}')" >/dev/null
+wait_turn 0
+game_menu
+click 153 75
+confirm
+globe_turn 1

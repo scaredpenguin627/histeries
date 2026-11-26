@@ -202,6 +202,7 @@ impl SimulationState {
                     map.tile(*tile).map(|state| VisibleTileObservation {
                         tile: *tile,
                         embedding: map.topology().embedding(*tile).expect("visible map tile"),
+                        surface: map.topology().surface(*tile),
                         terrain: state.terrain,
                         feature: state.feature,
                         river: state.river,
@@ -247,6 +248,10 @@ impl SimulationState {
             .collect();
         BoardObservation {
             turn: self.turn,
+            globe_frequency: self
+                .map
+                .as_ref()
+                .and_then(|map| map.topology().globe_frequency()),
             visible_tiles: visible_tiles_observation,
             visible_units,
             visible_cities,

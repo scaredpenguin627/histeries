@@ -2,16 +2,20 @@
 
 use std::{collections::BTreeMap, fmt};
 
-use histeries_hex::{FlatHex, TileId, TileTopology, TopologyError};
+use histeries_hex::{FlatHex, Geodesic, TileId, TileTopology, TopologyError};
+mod board;
 mod generation;
 
+pub use board::{BoardTopology, GlobeCell};
 pub use generation::{generate_map, generate_map_with_ruleset};
 pub use histeries_ruleset::{Feature, ResourceKind, Terrain};
 
 const MAP_MAGIC: &[u8; 4] = b"MAP1";
-const MAP_VERSION: u16 = 1;
+const FLAT_MAP_VERSION: u16 = 1;
+const GEODESIC_MAP_VERSION: u16 = 2;
+const GEODESIC_TAG: u8 = 1;
 
-/// One of the six topology edge directions used for a river segment.
+/// A local polygon-edge slot for a river. Compass names describe the flat board.
 #[derive(
     Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
 )]
@@ -74,13 +78,14 @@ impl Default for TileState {
 /// A deterministic map attached to a simulation state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MapState {
-    topology: FlatHex,
+    topology: BoardTopology,
     tiles: BTreeMap<TileId, TileState>,
 }
 
 impl MapState {
     /// Creates a blank map with all tiles set to plains.
-    pub fn blank(topology: FlatHex) -> Self {
+    pub fn blank(topology: impl Into<BoardTopology>) -> Self {
+        let topology = topology.into();
         let tiles = (0..topology.tile_count())
             .map(|index| (TileId::new(index as u32), TileState::default()))
             .collect();
@@ -88,8 +93,8 @@ impl MapState {
     }
 
     /// Returns the topology.
-    pub const fn topology(&self) -> FlatHex {
-        self.topology
+    pub const fn topology(&self) -> &BoardTopology {
+        &self.topology
     }
 
     /// Returns a tile in stable ID order.
@@ -148,6 +153,7 @@ impl MapState {
             .tiles
             .get_mut(&tile)
             .ok_or(MapError::UnknownTile(tile))?;
+        validate_river_slot(&self.topology, tile, river)?;
         if matches!(
             state.terrain,
             Terrain::Coast | Terrain::Ocean | Terrain::Mountain
@@ -184,11 +190,20 @@ impl MapState {
     pub fn encode(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(24 + self.tiles.len() * 8);
         bytes.extend_from_slice(MAP_MAGIC);
-        bytes.extend_from_slice(&MAP_VERSION.to_le_bytes());
-        bytes.extend_from_slice(&self.topology.width().to_le_bytes());
-        bytes.extend_from_slice(&self.topology.height().to_le_bytes());
-        bytes.push(self.topology.wraps_x() as u8);
-        bytes.push(self.topology.wraps_y() as u8);
+        match &self.topology {
+            BoardTopology::Flat(board) => {
+                bytes.extend_from_slice(&FLAT_MAP_VERSION.to_le_bytes());
+                bytes.extend_from_slice(&board.width().to_le_bytes());
+                bytes.extend_from_slice(&board.height().to_le_bytes());
+                bytes.push(board.wraps_x() as u8);
+                bytes.push(board.wraps_y() as u8);
+            }
+            BoardTopology::Geodesic(board) => {
+                bytes.extend_from_slice(&GEODESIC_MAP_VERSION.to_le_bytes());
+                bytes.push(GEODESIC_TAG);
+                bytes.extend_from_slice(&board.frequency().to_le_bytes());
+            }
+        }
         bytes.extend_from_slice(&(self.tiles.len() as u32).to_le_bytes());
         for (tile, state) in &self.tiles {
             bytes.extend_from_slice(&tile.index().to_le_bytes());
@@ -206,29 +221,33 @@ impl MapState {
         if reader.take(4)? != MAP_MAGIC {
             return Err(MapError::InvalidFormat);
         }
-        if reader.u16()? != MAP_VERSION {
-            return Err(MapError::UnsupportedVersion);
-        }
-        let width = reader.u32()?;
-        let height = reader.u32()?;
-        let wrap_x = match reader.u8()? {
-            0 => false,
-            1 => true,
-            _ => return Err(MapError::InvalidFormat),
+        let topology = match reader.u16()? {
+            FLAT_MAP_VERSION => {
+                let board = FlatHex::new(
+                    reader.u32()?,
+                    reader.u32()?,
+                    reader.boolean()?,
+                    reader.boolean()?,
+                )
+                .map_err(MapError::Topology)?;
+                reader.validate_records(board.tile_count())?;
+                BoardTopology::Flat(board)
+            }
+            GEODESIC_MAP_VERSION => {
+                if reader.u8()? != GEODESIC_TAG {
+                    return Err(MapError::InvalidTag);
+                }
+                let frequency = reader.u32()?;
+                let expected =
+                    Geodesic::tile_count_for_frequency(frequency).map_err(MapError::Topology)?;
+                reader.validate_records(expected)?;
+                BoardTopology::geodesic(frequency).map_err(MapError::Topology)?
+            }
+            _ => return Err(MapError::UnsupportedVersion),
         };
-        let wrap_y = match reader.u8()? {
-            0 => false,
-            1 => true,
-            _ => return Err(MapError::InvalidFormat),
-        };
-        let topology = FlatHex::new(width, height, wrap_x, wrap_y).map_err(MapError::Topology)?;
-        let count = reader.u32()? as usize;
-        if count != topology.tile_count() {
-            return Err(MapError::InvalidTileCount);
-        }
         let mut tiles = BTreeMap::new();
         let mut previous = None;
-        for _ in 0..count {
+        for _ in 0..topology.tile_count() {
             let tile = TileId::new(reader.u32()?);
             if !topology.contains(tile) {
                 return Err(MapError::UnknownTile(tile));
@@ -250,13 +269,24 @@ impl MapState {
                 },
             };
             validate_tile_state(tile, state)?;
+            validate_river_slot(&topology, tile, state.river)?;
             tiles.insert(tile, state);
-        }
-        if reader.remaining() != 0 {
-            return Err(MapError::TrailingBytes);
         }
         Ok(Self { topology, tiles })
     }
+}
+
+fn validate_river_slot(
+    topology: &BoardTopology,
+    tile: TileId,
+    river: Option<RiverDirection>,
+) -> Result<(), MapError> {
+    if let (BoardTopology::Geodesic(board), Some(edge)) = (topology, river)
+        && board.edge_neighbors(tile)[edge as usize].is_none()
+    {
+        return Err(MapError::IncompatibleRiver(tile));
+    }
+    Ok(())
 }
 
 fn validate_tile_state(tile: TileId, state: TileState) -> Result<(), MapError> {
@@ -351,6 +381,29 @@ struct MapReader<'a> {
 }
 
 impl<'a> MapReader<'a> {
+    fn boolean(&mut self) -> Result<bool, MapError> {
+        match self.u8()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(MapError::InvalidFormat),
+        }
+    }
+
+    fn validate_records(&mut self, expected: usize) -> Result<(), MapError> {
+        let count = self.u32()? as usize;
+        if count != expected {
+            return Err(MapError::InvalidTileCount);
+        }
+        match self
+            .remaining()
+            .cmp(&count.checked_mul(8).ok_or(MapError::InvalidTileCount)?)
+        {
+            std::cmp::Ordering::Less => Err(MapError::InvalidFormat),
+            std::cmp::Ordering::Greater => Err(MapError::TrailingBytes),
+            std::cmp::Ordering::Equal => Ok(()),
+        }
+    }
+
     const fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, offset: 0 }
     }

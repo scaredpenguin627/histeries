@@ -1,4 +1,6 @@
-//! Painting and picking share the same pointy-top footprint and display embedding.
+//! Painting and picking use the same tile footprints on the flat chart and globe atlas.
+
+mod globe;
 
 use eframe::egui::{
     self, Align2, Color32, FontId, Painter, Pos2, Rect, Shape, Stroke, Vec2, pos2, vec2,
@@ -20,6 +22,7 @@ pub(super) struct Camera {
     pub(super) center: Vec2,
     pub(super) radius: f32,
     pub(super) min_radius: f32,
+    pub(super) frequency: Option<u32>,
 }
 
 impl Default for Camera {
@@ -28,6 +31,7 @@ impl Default for Camera {
             center: Vec2::ZERO,
             radius: 48.0,
             min_radius: 15.0,
+            frequency: None,
         }
     }
 }
@@ -38,21 +42,48 @@ impl Camera {
     }
 
     pub(super) fn project(&self, point: Embedding, viewport: Rect) -> Pos2 {
-        viewport.center() + (Self::world(point) - self.center) * self.radius
+        viewport.center() + (self.tile_world(point) - self.center) * self.radius
+    }
+
+    pub(super) fn tile_world(&self, point: Embedding) -> Vec2 {
+        // A pentagon can project outside its original triangle. Leave enough space
+        // between charts to display and select the entire cut cell.
+        let margin = self
+            .frequency
+            .and_then(|frequency| histeries_hex::Geodesic::atlas_face(frequency, point))
+            .map_or(Vec2::ZERO, |face| {
+                vec2(face.chart[0] as f32, face.chart[1] as f32) * 4.0
+            });
+        Self::world(point) + margin
     }
 
     pub(super) fn fit(&mut self, view: &BoardObservation, viewport: Rect) {
+        self.frequency = view.globe_frequency();
         let mut bounds = Rect::NOTHING;
         for tile in view.visible_tiles() {
-            bounds.extend_with(Self::world(tile.embedding).to_pos2());
+            let center = self.tile_world(tile.embedding).to_pos2();
+            if let Some(cell) = globe::footprint(tile, self.frequency, center, 1.0) {
+                for &point in cell.corners() {
+                    bounds.extend_with(point);
+                }
+            } else {
+                bounds.extend_with(center);
+            }
         }
         if bounds == Rect::NOTHING {
             return;
         }
-        let footprint = bounds.expand2(vec2(HALF_WIDTH, 1.0));
+        let footprint = if self.frequency.is_some() {
+            bounds
+        } else {
+            bounds.expand2(vec2(HALF_WIDTH, 1.0))
+        };
         let fraction = if viewport.width() < 500.0 { 0.80 } else { 0.68 };
         let scale =
             (viewport.width() / footprint.width()).min(viewport.height() / footprint.height());
+        if self.frequency.is_some() {
+            self.min_radius = self.min_radius.min(fraction * scale);
+        }
         self.radius = (fraction * scale).clamp(self.min_radius, 88.0);
         self.center = footprint.center().to_vec2();
     }
@@ -108,8 +139,13 @@ pub(super) fn land_color(terrain: Terrain) -> Color32 {
     }
 }
 
-pub(super) fn ground(painter: &Painter, tile: &VisibleTileObservation, center: Pos2, radius: f32) {
-    let corners = vertices(center, radius);
+fn ground(
+    painter: &Painter,
+    tile: &VisibleTileObservation,
+    center: Pos2,
+    radius: f32,
+    corners: &[Pos2],
+) {
     painter.add(Shape::convex_polygon(
         corners.to_vec(),
         land_color(tile.terrain),
@@ -209,22 +245,31 @@ pub(super) fn ground(painter: &Painter, tile: &VisibleTileObservation, center: P
     }
 }
 
-pub(super) fn river(painter: &Painter, tile: &VisibleTileObservation, center: Pos2, radius: f32) {
+fn river(painter: &Painter, tile: &VisibleTileObservation, corners: &[Pos2], radius: f32) {
     if let Some(direction) = tile.river {
-        let corners = vertices(center, radius);
         let edge = direction as usize;
         painter.line_segment(
-            [corners[edge], corners[(edge + 1) % 6]],
+            [corners[edge], corners[(edge + 1) % corners.len()]],
             Stroke::new((radius * 0.1).max(2.0), Color32::from_rgb(68, 133, 159)),
         );
     }
 }
 
-pub(super) fn outline(painter: &Painter, center: Pos2, radius: f32, color: Color32) {
-    painter.add(Shape::closed_line(
-        vertices(center, radius * 0.92).to_vec(),
-        Stroke::new(2.3, color),
-    ));
+pub(super) fn outline(
+    painter: &Painter,
+    camera: &Camera,
+    tile: &VisibleTileObservation,
+    viewport: Rect,
+    scale: f32,
+    color: Color32,
+) {
+    let center = camera.project(tile.embedding, viewport);
+    let radius = camera.radius * scale * 0.92;
+    let corners = globe::footprint(tile, camera.frequency, center, radius).map_or_else(
+        || vertices(center, radius).to_vec(),
+        |cell| cell.corners().to_vec(),
+    );
+    painter.add(Shape::closed_line(corners, Stroke::new(2.3, color)));
 }
 
 fn owner_color(friendly: bool) -> Color32 {
@@ -257,20 +302,40 @@ pub(super) fn surface(
         camera.center -= response.drag_delta() / camera.radius;
     }
     let radius = camera.radius;
+    // Even on the coarsest sphere every projected vertex is within three
+    // radii of its tile center on both display axes.
+    let clip = rect.expand(if camera.frequency.is_some() {
+        3.0 * radius
+    } else {
+        radius
+    });
     let mut hovered = None;
     for tile in view.visible_tiles() {
         let center = camera.project(tile.embedding, rect);
-        if rect.expand(radius).contains(center) {
-            ground(&painter, tile, center, radius);
-            if pointer.is_some_and(|at| contains(center, radius, at)) {
+        if clip.contains(center) {
+            let cell = globe::footprint(tile, camera.frequency, center, radius);
+            let flat = vertices(center, radius);
+            let corners = cell
+                .as_ref()
+                .map_or(flat.as_slice(), globe::Footprint::corners);
+            ground(&painter, tile, center, radius, corners);
+            if pointer.is_some_and(|at| {
+                cell.as_ref()
+                    .map_or_else(|| contains(center, radius, at), |cell| cell.contains(at))
+            }) {
                 hovered = Some(tile.tile);
             }
         }
     }
     for tile in view.visible_tiles().iter().filter(|t| t.river.is_some()) {
         let center = camera.project(tile.embedding, rect);
-        if rect.expand(radius).contains(center) {
-            river(&painter, tile, center, radius);
+        if clip.contains(center) {
+            let cell = globe::footprint(tile, camera.frequency, center, radius);
+            let flat = vertices(center, radius);
+            let corners = cell
+                .as_ref()
+                .map_or(flat.as_slice(), globe::Footprint::corners);
+            river(&painter, tile, corners, radius);
         }
     }
     (response, painter, hovered)

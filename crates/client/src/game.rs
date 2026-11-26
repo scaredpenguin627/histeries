@@ -4,9 +4,14 @@ use histeries_hex::{Embedding, FlatHex, TileId};
 use histeries_net::LockstepHost;
 use histeries_rules_core::PlayerId;
 use histeries_sim::{
-    Command, MatchHost, MatchView, Observation, Session, VictoryKind, Viewpoint, frontier_duel,
-    generate_map, seeded_frontier,
+    BoardTopology, Command, MatchHost, MatchView, Observation, Session, VictoryKind, Viewpoint,
+    frontier_duel, generate_map, seeded_frontier, seeded_frontier_on,
 };
+
+fn globe_frontier(seed: u64, players: u32, frequency: u32) -> Result<Session, String> {
+    let topology = BoardTopology::geodesic(frequency).map_err(|error| error.to_string())?;
+    seeded_frontier_on(seed, players, topology)
+}
 
 enum Players {
     Solo {
@@ -39,6 +44,30 @@ impl ClientSession {
     /// Creates a frontier shared by two to eight local human players.
     pub fn hotseat(seed: u64, players: u32) -> Result<Self, String> {
         Self::from_hotseat(seeded_frontier(seed, players)?)
+    }
+
+    /// Opens a two-seat frontier on a geodesic globe.
+    pub fn globe(seed: u64, frequency: u32) -> Result<Self, String> {
+        Self::from_session(globe_frontier(seed, 2, frequency)?)
+    }
+
+    /// Creates a globe frontier shared by the local human players.
+    pub fn globe_hotseat(seed: u64, players: u32, frequency: u32) -> Result<Self, String> {
+        Self::from_hotseat(globe_frontier(seed, players, frequency)?)
+    }
+
+    #[cfg(not(target_env = "ohos"))]
+    pub(crate) fn start(
+        seed: u64,
+        humans: Option<u32>,
+        globe: Option<u32>,
+    ) -> Result<Self, String> {
+        match (humans, globe) {
+            (None, None) => Self::new(seed),
+            (Some(players), None) => Self::hotseat(seed, players),
+            (None, Some(frequency)) => Self::globe(seed, frequency),
+            (Some(players), Some(frequency)) => Self::globe_hotseat(seed, players, frequency),
+        }
     }
 
     /// Resumes human seat rotation from the turn completions in an ordinary save.

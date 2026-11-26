@@ -40,8 +40,14 @@ impl FileAction {
 #[cfg(any(test, target_arch = "wasm32"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Screen {
-    Editor,
-    Map { turn: u32, three_d: bool },
+    Editor {
+        globe: bool,
+    },
+    Map {
+        turn: u32,
+        three_d: bool,
+        globe: bool,
+    },
     Handoff(histeries_rules_core::PlayerId),
     Result(histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
 }
@@ -54,6 +60,8 @@ pub struct GameApp {
     mods: ModManager,
     editing: bool,
     dimensions: [u32; 3],
+    new_globe: bool,
+    frequency: u32,
     presenter: Presenter,
     dialog: Option<FileAction>,
     seed: String,
@@ -78,7 +86,13 @@ impl GameApp {
     #[cfg(any(test, target_arch = "wasm32"))]
     pub(crate) fn screen(&self) -> Screen {
         if self.editing {
-            return Screen::Editor;
+            return Screen::Editor {
+                globe: self
+                    .editor
+                    .as_ref()
+                    .and_then(Editor::globe_frequency)
+                    .is_some(),
+            };
         }
         let (active, presenter) = self
             .playtest
@@ -96,6 +110,7 @@ impl GameApp {
             Screen::Map {
                 turn: active.observation().turn(),
                 three_d: presenter.three_d,
+                globe: active.observation().board().globe_frequency().is_some(),
             }
         }
     }
@@ -113,6 +128,7 @@ impl GameApp {
     }
 
     fn with_game(game: ClientSession, mods: ModManager) -> Self {
+        let globe = game.observation().board().globe_frequency();
         Self {
             game,
             playtest: None,
@@ -120,7 +136,9 @@ impl GameApp {
             mods,
             editing: false,
             dimensions: [12, 9, 2],
-            presenter: Presenter::default(),
+            new_globe: globe.is_some(),
+            frequency: globe.unwrap_or(3),
+            presenter: Presenter::new(globe.is_some()),
             dialog: None,
             seed: "7".into(),
             hotseat_players: 2,
@@ -156,7 +174,8 @@ impl GameApp {
         let draft = self.editor.as_ref().ok_or("No scenario is open.")?;
         let trial = ClientSession::from_save_bytes(draft.bytes())?;
         self.close_dialog();
-        self.playtest = Some((trial, Presenter::new(self.presenter.three_d)));
+        let presenter = self.presenter_for(&trial);
+        self.playtest = Some((trial, presenter));
         self.editing = false;
         Ok(())
     }
@@ -170,6 +189,16 @@ impl GameApp {
     fn close_dialog(&mut self) {
         self.dialog = None;
         self.error.clear();
+    }
+
+    fn presenter_for(&self, next: &ClientSession) -> Presenter {
+        let current_globe = self.game.observation().board().globe_frequency().is_some();
+        let next_globe = next.observation().board().globe_frequency().is_some();
+        Presenter::new(if current_globe == next_globe {
+            self.presenter.three_d
+        } else {
+            next_globe
+        })
     }
 
     fn execute(&mut self, action: FileAction) -> Result<(), String> {
@@ -189,6 +218,9 @@ impl GameApp {
                     crate::web_storage::write(crate::web_storage::SCENARIO, draft.bytes())?;
                     draft.set_source("Saved browser scenario".into());
                     return Ok(());
+                }
+                FileAction::New if self.new_globe => {
+                    Editor::blank_globe(self.frequency, self.dimensions[2])?
                 }
                 FileAction::New => {
                     Editor::blank(self.dimensions[0], self.dimensions[1], self.dimensions[2])?
@@ -240,11 +272,8 @@ impl GameApp {
                     .trim()
                     .parse()
                     .map_err(|_| "Enter an unsigned integer seed.")?;
-                if action == FileAction::NewHotseat {
-                    ClientSession::hotseat(seed, self.hotseat_players)?
-                } else {
-                    ClientSession::new(seed)?
-                }
+                let humans = (action == FileAction::NewHotseat).then_some(self.hotseat_players);
+                ClientSession::start(seed, humans, self.new_globe.then_some(self.frequency))?
             }
             #[cfg(not(target_arch = "wasm32"))]
             FileAction::Open => crate::native::open(std::path::Path::new(&self.game_path))?,
@@ -264,8 +293,8 @@ impl GameApp {
         };
         self.editor = None;
         self.return_to_game();
+        self.presenter = self.presenter_for(&game);
         self.game = game;
-        self.presenter.reset();
         Ok(())
     }
 
@@ -282,6 +311,23 @@ impl GameApp {
             }
             #[cfg(not(target_arch = "wasm32"))]
             let mut replacing_file = false;
+            if matches!(action, FileAction::New | FileAction::NewHotseat) {
+                ui.horizontal(|ui| {
+                    ui.label("Map shape");
+                    ui.radio_value(&mut self.new_globe, false, "Flat");
+                    ui.radio_value(&mut self.new_globe, true, "Globe");
+                });
+                if self.new_globe {
+                    ui.horizontal(|ui| {
+                        let label = ui.label("Globe frequency");
+                        ui.add(
+                            egui::DragValue::new(&mut self.frequency)
+                                .range(1..=histeries_hex::Geodesic::MAX_FREQUENCY),
+                        )
+                        .labelled_by(label.id);
+                    });
+                }
+            }
             match action {
                 #[cfg(target_arch = "wasm32")]
                 FileAction::Open | FileAction::Save => {
@@ -311,6 +357,9 @@ impl GameApp {
                 }
                 FileAction::New if self.editing => {
                     for (index, label) in ["Width", "Height", "Players"].into_iter().enumerate() {
+                        if self.new_globe && index < 2 {
+                            continue;
+                        }
                         ui.horizontal(|ui| {
                             ui.label(label);
                             let range = if index == 2 {
@@ -513,6 +562,45 @@ impl eframe::App for GameApp {
 mod tests {
     use super::*;
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn globe_game_editor_playtest_and_saves_follow_the_selected_shape() {
+        let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
+        let directory = tempfile::tempdir().unwrap();
+        app.game_path = directory.path().join("globe.hst").display().to_string();
+        app.scenario_path = directory.path().join("scenario.hst").display().to_string();
+        app.new_globe = true;
+        app.execute(FileAction::New).unwrap();
+        assert_eq!(app.game.observation().board().globe_frequency(), Some(3));
+        assert!(app.presenter.three_d);
+        app.game.end_turn().unwrap();
+        app.execute(FileAction::Save).unwrap();
+        let saved = app.game.save_bytes();
+
+        app.new_globe = false;
+        app.execute(FileAction::New).unwrap();
+        assert!(!app.presenter.three_d);
+        app.execute(FileAction::Open).unwrap();
+        assert_eq!(app.game.save_bytes(), saved);
+        assert!(app.presenter.three_d);
+        app.presenter.three_d = false;
+        app.open_editor().unwrap();
+        assert_eq!(app.screen(), Screen::Editor { globe: true });
+        app.new_globe = true;
+        app.frequency = 2;
+        app.execute(FileAction::New).unwrap();
+        app.execute(FileAction::Save).unwrap();
+        app.execute(FileAction::FromGame).unwrap();
+        app.execute(FileAction::Open).unwrap();
+        app.start_playtest().unwrap();
+        let (trial, presenter) = app.playtest.as_ref().unwrap();
+        assert_eq!(trial.observation().board().globe_frequency(), Some(2));
+        assert!(!presenter.three_d);
+        assert!(trial.observation().visible_tiles().is_empty());
+        app.return_to_game();
+        assert_eq!(app.game.save_bytes(), saved);
+    }
+
     #[test]
     fn playtesting_a_retained_or_blank_draft_preserves_the_live_match() {
         let mut app = GameApp::with_game(ClientSession::new(7).unwrap(), ModManager::restore(None));
@@ -542,12 +630,13 @@ mod tests {
             app.screen(),
             Screen::Map {
                 turn: trial_turn,
-                three_d: false
+                three_d: false,
+                globe: false
             }
         );
         app.open_editor().unwrap();
         assert!(app.editing && app.playtest.is_none());
-        assert_eq!(app.screen(), Screen::Editor);
+        assert_eq!(app.screen(), Screen::Editor { globe: false });
         assert_eq!(app.editor.as_ref().unwrap().bytes(), draft);
         app.dialog = Some(FileAction::New);
         app.error = "previous dialog error".into();
@@ -558,7 +647,8 @@ mod tests {
             app.screen(),
             Screen::Map {
                 turn: app.game.observation().turn(),
-                three_d: false
+                three_d: false,
+                globe: false
             }
         );
         assert!(!app.editing && app.playtest.is_none());

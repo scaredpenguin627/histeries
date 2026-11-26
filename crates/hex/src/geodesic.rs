@@ -17,6 +17,14 @@ pub struct SphereCell {
     pub corners: Vec<[i32; 3]>,
 }
 
+/// The original triangular chart owning a tile's planar display embedding.
+pub struct AtlasFace {
+    /// Column and row in the display atlas.
+    pub chart: [u32; 2],
+    /// Cartesian directions of the chart's upper-left, upper-right and bottom vertices.
+    pub vertices: [[i32; 3]; 3],
+}
+
 #[derive(Debug)]
 struct Cell {
     neighbors: Vec<TileId>,
@@ -64,6 +72,15 @@ impl Geodesic {
     pub const MAX_FREQUENCY: u32 = 32;
     /// Radius of the sphere's integer rendering embedding.
     pub const RADIUS: i32 = 1_000_000;
+
+    /// Looks up a chart for a topology-supplied embedding without constructing a board.
+    pub fn atlas_face(frequency: u32, point: Embedding) -> Option<AtlasFace> {
+        Self::tile_count_for_frequency(frequency).ok()?;
+        let x = u32::try_from(point.x).ok()?;
+        let y = u32::try_from(point.y).ok()?;
+        let chart = [x / (2 * frequency + 4), y / (3 * frequency + 6)];
+        mesh::atlas_face(chart)
+    }
 
     /// Validates a frequency and returns its tile count without allocating a mesh.
     pub const fn tile_count_for_frequency(frequency: u32) -> Result<usize, TopologyError> {

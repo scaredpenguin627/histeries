@@ -206,7 +206,8 @@ fn strategic_hysteresis_retains_the_previous_path_until_the_lead_grows() {
 fn tactical_plan_attacks_adjacent_visible_enemy() {
     let player = PlayerId::new(1);
     let mut session = session_with_map(&[player]);
-    let topology = session.state_snapshot().map().expect("test map").topology();
+    let state = session.state_snapshot();
+    let topology = state.map().expect("test map").topology();
     let own_tile = TileId::new(0);
     let enemy_tile = topology
         .neighbors(own_tile)

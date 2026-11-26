@@ -1,5 +1,7 @@
 # Playing through MCP
 
+Use `histeries mcp --globe 3 --seed 7` to create a spherical frontier with 92 cells. On a globe, `observe` reports the public subdivision frequency and the observing seat's visible tiles. Orders and replay identify these cells with the same stable tile IDs used by the desktop and LAN clients.
+
 Start a fresh two-player game with `histeries mcp`. Set `HISTERIES_MCP_SEAT_1_TOKEN` to a secret and `HISTERIES_MCP_TOKEN` to the same value in the launching environment. Your stdio client controls seat 1 while the greedy baseline plays the other seats. Set `--players 2..8` or `--seed N` to change the generated scenario. To host an existing save or edited scenario, pass `--state PATH` in place of the setup flags. Token variable names then use the numeric seat IDs in the save. A resumed game starts its replay history at the supplied snapshot, including any seats already finished for that turn.
 
 After the human seat ends its turn, all remaining stdio bots plan in parallel. Each sees its own fog-filtered observation taken before the first bot acts. The server then applies the plans in ascending seat order. If two bots try to move into the same military slot, the first legal move succeeds and the later bot finishes its turn with its original plan. Loading a save after the human seat has ended uses the same rule.

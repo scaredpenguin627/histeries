@@ -328,6 +328,67 @@ fn map_callback(output: &FullOutput) -> Option<Rect> {
     })
 }
 
+#[test]
+fn clicking_a_globe_neighbor_moves_the_unit_across_a_pentagon_edge_and_preserves_the_save() {
+    use histeries_sim::{BoardTopology, MapState, Session, UnitKind};
+    let topology = BoardTopology::geodesic(4).unwrap();
+    let origin = TileId::new(0);
+    let destination = topology.edge_neighbors(origin)[4].unwrap();
+    let seat = PlayerId::new(1);
+    let unit = UnitId::new(1);
+    let mut session = Session::with_map([seat, PlayerId::new(2)], MapState::blank(topology));
+    session
+        .dispatch(Command::UnitSpawn {
+            player: seat,
+            unit,
+            kind: UnitKind::Warrior,
+            tile: origin,
+        })
+        .unwrap();
+    let mut game = ClientSession::from_save_bytes(&session.save_bytes()).unwrap();
+    let mut state = Presenter::new(true);
+    let ctx = Context::default();
+    crate::font::install(&ctx);
+    let size = vec2(1024.0, 700.0);
+    frame(&ctx, &mut state, &mut game, size, vec![]);
+    let screen = frame(&ctx, &mut state, &mut game, size, vec![]);
+    let rect = map_callback(&screen).unwrap();
+    let view = game.observation();
+    let scene = scene3d::Scene::build(view.board(), seat, &state.camera3d, rect, None);
+    assert_eq!(scene.pick(rect.center()), Some(origin));
+    let destination_at = (6..rect.height() as u32)
+        .step_by(6)
+        .find_map(|y| {
+            (6..rect.width() as u32)
+                .step_by(6)
+                .map(|x| rect.min + vec2(x as f32, y as f32))
+                .find(|&p| scene.pick(p) == Some(destination))
+        })
+        .unwrap();
+    let selected = click(&ctx, &mut state, &mut game, size, rect.center());
+    click(
+        &ctx,
+        &mut state,
+        &mut game,
+        size,
+        text_center(&selected, "Move"),
+    );
+    let moved = click(&ctx, &mut state, &mut game, size, destination_at);
+    assert_eq!(game.observation().units()[0].tile, destination);
+    let atlas = click(&ctx, &mut state, &mut game, size, text_center(&moved, "2D"));
+    assert!(map_callback(&atlas).is_none());
+    session
+        .dispatch(Command::UnitMove {
+            player: seat,
+            unit,
+            destination,
+        })
+        .unwrap();
+    assert_eq!(game.save_bytes(), session.save_bytes());
+    let restored = ClientSession::from_save_bytes(&game.save_bytes()).unwrap();
+    assert_eq!(restored.observation(), game.observation());
+}
+
 /// Position a legal tile across the prompt edge and click each side.
 fn move_past_caption(
     ctx: &Context,
@@ -511,6 +572,39 @@ fn a_waiting_seat_can_inspect_its_warrior_without_issuing_orders() {
         screen = click_at(text_center(&screen, control), &mut draw);
     }
     text_center(&screen, "Turn 0");
+}
+
+#[test]
+fn game_menu_starts_and_advances_a_globe_through_the_map_shape_controls() {
+    use eframe::App as _;
+    let ctx = Context::default();
+    let mut app = crate::GameApp::new(
+        &eframe::CreationContext::_new_kittest(ctx.clone()),
+        ClientSession::new(7).unwrap(),
+    );
+    let mut host = eframe::Frame::_new_kittest();
+    let mut draw = |events| {
+        draw_frame(&ctx, vec2(1024.0, 700.0), events, |ui| {
+            app.ui(ui, &mut host)
+        })
+    };
+    draw(vec![]);
+    let mut screen = draw(vec![]);
+    for label in ["Game", "New game", "Globe"] {
+        screen = click_at(text_center(&screen, label), &mut draw);
+    }
+    text_center(&screen, "Globe frequency");
+    for label in ["Start game", "End turn"] {
+        screen = click_at(text_center(&screen, label), &mut draw);
+    }
+    assert_eq!(
+        app.screen(),
+        crate::app::Screen::Map {
+            turn: 1,
+            three_d: true,
+            globe: true,
+        }
+    );
 }
 
 #[test]

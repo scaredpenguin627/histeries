@@ -1,7 +1,7 @@
 //! A local editor pairs the simulation draft with its independent presentation state.
 use crate::presenter::editor::EditorPresenter;
 use eframe::egui::Ui;
-use histeries_sim::ScenarioDraft;
+use histeries_sim::{BoardTopology, ScenarioDraft};
 
 pub(crate) struct Editor {
     draft: ScenarioDraft,
@@ -23,6 +23,19 @@ impl Editor {
 
     pub(crate) fn open(bytes: Vec<u8>, source: String) -> Result<Self, String> {
         Ok(Self::new(ScenarioDraft::open(&bytes)?, source))
+    }
+
+    pub(crate) fn blank_globe(frequency: u32, seats: u32) -> Result<Self, String> {
+        let globe = BoardTopology::geodesic(frequency).map_err(|error| error.to_string())?;
+        Ok(Self::new(
+            ScenarioDraft::blank_on(globe, seats)?,
+            "Blank globe".into(),
+        ))
+    }
+
+    #[cfg(any(test, target_arch = "wasm32"))]
+    pub(crate) fn globe_frequency(&self) -> Option<u32> {
+        self.draft.board().globe_frequency()
     }
 
     pub(crate) fn bytes(&self) -> &[u8] {

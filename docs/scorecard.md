@@ -2,7 +2,13 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 5 — Playable globe
+
+The frequency-3, seed-7 acceptance game reached a science victory for seat 2 in 42 completed rounds and 494 accepted commands. Planning with worker limits of 1 and 8 produced identical round traces. The Windows loopback host, two verified replicas, reloads and replay agreed on the round boundaries and terminal hash `8886fd3ca80ba118`. The fast gate also compares these traces across native runners and checks a playable browser globe save byte for byte against its native counterpart. [Playable globe report](sessions/2026-11-26-globe-matches.md)
+
 ## Phase 5 — Geodesic topology
+
+The three native runners on PR #14 reproduced the same mesh and BFS counts. The implementation fast gate took 123.866 s on Linux, 242.399 s on macOS and 225.301 s on Windows MSVC. [PR #14 verification](https://github.com/scaredpenguin627/histeries/actions/runs/45856510596)
 
 The topology suite measured 12 pentagons at each of five frequencies (1, 2, 3, 8 and 32). At frequency 32 it counted 10,242 cells, 30,720 edges and 20,480 shared corners. At four frequencies it compared 11,528 ordered endpoint pairs against independent breadth-first searches. The fast workflow repeats these checks per platform and uploads the counts as `geodesic.txt`. [Geodesic acceptance report](sessions/2026-11-26-geodesic-topology.md)
 

@@ -207,12 +207,7 @@ impl EditorPresenter {
                 atlas::occupants(&painter, response.rect, view, &self.camera, self.owner);
                 for (id, color) in [(self.selected, GOLD), (hovered, PAPER)] {
                     if let Some(tile) = id.and_then(|id| visible(view, id)) {
-                        atlas::outline(
-                            &painter,
-                            self.camera.project(tile.embedding, response.rect),
-                            self.camera.radius,
-                            color,
-                        );
+                        atlas::outline(&painter, &self.camera, tile, response.rect, 1.0, color);
                     }
                 }
                 atlas::compass(&painter, response.rect);
@@ -270,6 +265,76 @@ mod tests {
     use eframe::egui::{
         Context, Event, Modifiers, PointerButton, Pos2, RawInput, Rect, pos2, vec2,
     };
+
+    #[test]
+    fn click_a_painted_globe_pentagon_then_undo_and_playtest_its_edit() {
+        let ctx = Context::default();
+        crate::font::install(&ctx);
+        let topology = histeries_sim::BoardTopology::geodesic(3).unwrap();
+        let mut draft = ScenarioDraft::blank_on(topology, 2).unwrap();
+        let initial = draft.bytes().to_vec();
+        let owner = draft.seats()[0];
+        let mut editor = EditorPresenter::new(owner, "Globe".into());
+        editor.brush = Brush::Terrain(Terrain::Grassland);
+        let mut frame = |events| {
+            let input = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(840.0, 600.0))),
+                events,
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| editor.show(ui, &mut draft, |_| {}));
+            output.textures_delta.clear();
+            output
+        };
+        frame(vec![]);
+        let painted = frame(vec![]);
+        // Centroid of an actual painted five-sided terrain polygon.
+        let pentagon = painted
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Path(path)
+                    if path.closed
+                        && path.points.len() == 5
+                        && path.fill == atlas::land_color(Terrain::Plains) =>
+                {
+                    Some(path)
+                }
+                _ => None,
+            })
+            .expect("painted pentagon");
+        let at = (pentagon
+            .points
+            .iter()
+            .fold(egui::Vec2::ZERO, |total, p| total + p.to_vec2())
+            / 5.0)
+            .to_pos2();
+        for pressed in [true, false] {
+            frame(vec![
+                Event::PointerMoved(at),
+                Event::PointerButton {
+                    pos: at,
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers: Modifiers::NONE,
+                },
+            ]);
+        }
+        let id = editor.selected.expect("painted tile was selected");
+        let selected = visible(draft.board(), id).unwrap();
+        assert_eq!(selected.surface.as_ref().unwrap().corners.len(), 5);
+        assert_eq!(selected.terrain, Terrain::Grassland);
+        draft.travel(false).unwrap();
+        assert_eq!(draft.bytes(), initial);
+        draft.travel(true).unwrap();
+        draft.apply(Brush::City, id, owner).unwrap();
+        let trial = crate::ClientSession::from_save_bytes(draft.bytes()).unwrap();
+        assert_eq!(
+            visible(trial.observation().board(), id).unwrap().terrain,
+            Terrain::Grassland
+        );
+        assert_eq!(trial.observation().board().visible_cities()[0].tile, id);
+    }
 
     #[test]
     fn map_click_applies_the_active_brush_to_a_blank_scenario() {

@@ -3,6 +3,68 @@ use crate::game::ClientSession;
 use histeries_hex::Embedding;
 use histeries_sim::{Command, Feature, Terrain, UnitKind};
 
+#[test]
+fn globe_edges_pick_the_incident_tiles_and_fog_hides_the_rotated_far_side() {
+    use histeries_sim::{BoardTopology, ScenarioBrush, ScenarioDraft, Session};
+    let topology = BoardTopology::geodesic(4).unwrap();
+    let seat = PlayerId::new(1);
+    let pentagon = TileId::new(0);
+    let mut draft = ScenarioDraft::blank_on(topology.clone(), 2).unwrap();
+    draft.apply(ScenarioBrush::City, pentagon, seat).unwrap();
+    let view = Session::from_save_bytes(draft.bytes())
+        .unwrap()
+        .observe(seat)
+        .unwrap();
+    let home = visible(view.board(), pentagon).unwrap();
+    let cell = home.surface.as_ref().unwrap();
+    assert_eq!(cell.corners.len(), 5);
+    let rect = Rect::from_min_size(pos2(19.0, 73.0), vec2(700.0, 560.0));
+    let mut camera = Camera3d::default();
+    camera.fit(view.board(), rect);
+    camera.focus(home);
+    let projection = Projection::new(&camera, rect);
+    let scene = Scene::build(view.board(), seat, &camera, rect, None);
+    assert_eq!(scene.pick(rect.center()), Some(pentagon));
+    let center = screen(&projection, globe::position(cell.center));
+    for (i, neighbor) in topology
+        .edge_neighbors(pentagon)
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let other = visible(view.board(), neighbor)
+            .unwrap()
+            .surface
+            .as_ref()
+            .unwrap();
+        assert_eq!(other.corners.len(), 6);
+        let a = cell.corners[i];
+        let b = cell.corners[(i + 1) % cell.corners.len()];
+        assert!(other.corners.contains(&a) && other.corners.contains(&b));
+        let edge = screen(&projection, globe::position(a))
+            .lerp(screen(&projection, globe::position(b)), 0.5);
+        let beyond = screen(&projection, globe::position(other.center));
+        assert_eq!(scene.pick(edge.lerp(center, 0.25)), Some(pentagon));
+        assert_eq!(scene.pick(edge.lerp(beyond, 0.25)), Some(neighbor));
+    }
+
+    let [x, y, z] = globe::position(cell.center);
+    let latitude = y.atan2(x.hypot(z));
+    camera.orbit(vec2(std::f32::consts::PI, -2.0 * latitude) * projection.globe.unwrap().radius);
+    let opposite = Scene::build(view.board(), seat, &camera, rect, None);
+    assert_eq!(opposite.pick(rect.center()), None);
+    // The GPU receives opaque fog at the center, even with all known terrain behind it.
+    let depth = opposite
+        .vertices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter_map(|triangle| depth_at(triangle, Pos2::ZERO))
+        .filter(|depth| (0.0..=1.0).contains(depth))
+        .min_by(f32::total_cmp);
+    assert_eq!(depth, Some(1.0));
+}
+
 fn screen(projection: &Projection, point: Point) -> Pos2 {
     let [x, y, _] = projection.clip(point);
     projection.rect.min + vec2(1.0 + x, 1.0 - y) * projection.rect.size() * 0.5

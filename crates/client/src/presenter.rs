@@ -276,7 +276,11 @@ impl Presenter {
                     if self.three_d {
                         self.camera_controls(ui);
                         if !compact {
-                            ui.weak("Drag to pan   ·   Right-drag to orbit   ·   Scroll to zoom");
+                            ui.weak(if view.board().globe_frequency().is_some() {
+                                "Drag to rotate   ·   Shift-drag to pan   ·   Scroll to zoom"
+                            } else {
+                                "Drag to pan   ·   Right-drag to orbit   ·   Scroll to zoom"
+                            });
                         }
                     } else if !compact {
                         ui.weak("Drag to pan   ·   Scroll to zoom");
@@ -376,7 +380,7 @@ impl Presenter {
 
     fn focus(&mut self, view: &Observation, tile: TileId) {
         if let Some(observed) = visible(view.board(), tile) {
-            self.camera.center = Camera::world(observed.embedding);
+            self.camera.center = self.camera.tile_world(observed.embedding);
             self.camera3d.focus(observed);
             self.selected = Some(tile);
         }
@@ -470,19 +474,12 @@ impl Presenter {
         let (response, painter, hovered) = atlas::surface(ui, view.board(), &mut self.camera);
         let hovered = hovered.filter(|_| !over_caption);
         let rect = response.rect;
-        let radius = self.camera.radius;
-        let locate = |id| {
-            visible(view.board(), id)
-                .map(|tile| self.camera.project(tile.embedding, rect))
-                .filter(|center| rect.expand(radius).contains(*center))
-        };
-        if let Some(center) = self.selected.and_then(locate) {
-            atlas::outline(&painter, center, radius, GOLD);
+        if let Some(tile) = self.selected.and_then(|id| visible(view.board(), id)) {
+            atlas::outline(&painter, &self.camera, tile, rect, 1.0, GOLD);
         }
         atlas::occupants(&painter, rect, view.board(), &self.camera, view.seat());
         if let Some(tile) = hovered.and_then(|id| visible(view.board(), id)) {
-            let center = self.camera.project(tile.embedding, rect);
-            atlas::outline(&painter, center, radius * 0.94, PAPER);
+            atlas::outline(&painter, &self.camera, tile, rect, 0.94, PAPER);
         }
         atlas::compass(&painter, rect);
         (response, painter, hovered)
@@ -501,6 +498,14 @@ impl Presenter {
         let rect = response.rect;
         if self.fit_3d {
             self.camera3d.fit(view.board(), rect);
+            if view.board().globe_frequency().is_some()
+                && let Some(tile) = self
+                    .selected
+                    .or_else(|| home(view))
+                    .and_then(|id| visible(view.board(), id))
+            {
+                self.camera3d.focus(tile);
+            }
             self.fit_3d = false;
         }
         let pointer = response
@@ -511,7 +516,10 @@ impl Presenter {
             self.camera3d
                 .zoom((scroll * 0.003).exp() * pinch, at - rect.center());
         }
-        if response.dragged_by(egui::PointerButton::Secondary) {
+        let globe_drag = view.board().globe_frequency().is_some()
+            && response.dragged_by(egui::PointerButton::Primary)
+            && !ui.input(|i| i.modifiers.shift);
+        if globe_drag || response.dragged_by(egui::PointerButton::Secondary) {
             self.camera3d.orbit(response.drag_delta());
         } else if response.dragged_by(egui::PointerButton::Primary) {
             self.camera3d.pan(response.drag_delta());

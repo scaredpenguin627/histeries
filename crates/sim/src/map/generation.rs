@@ -2,22 +2,27 @@
 
 use std::collections::VecDeque;
 
-use histeries_hex::{FlatHex, TileId, TileTopology};
+use histeries_hex::{TileId, TileTopology};
 use histeries_rules_core::NamedRng;
 use histeries_ruleset::{MapGeneration, Ruleset, base_ruleset};
 
-use super::{Feature, MapState, RiverDirection, Terrain, TileState};
+use super::{BoardTopology, Feature, MapState, RiverDirection, Terrain, TileState};
 
 /// Generates a map with the bundled ruleset.
-pub fn generate_map(topology: FlatHex, seed: [u8; 32]) -> MapState {
+pub fn generate_map(topology: impl Into<BoardTopology>, seed: [u8; 32]) -> MapState {
     generate_map_with_ruleset(topology, seed, base_ruleset())
 }
 
 /// Generates a map using a validated ruleset's continent and placement settings.
-pub fn generate_map_with_ruleset(topology: FlatHex, seed: [u8; 32], ruleset: &Ruleset) -> MapState {
+pub fn generate_map_with_ruleset(
+    topology: impl Into<BoardTopology>,
+    seed: [u8; 32],
+    ruleset: &Ruleset,
+) -> MapState {
+    let topology = topology.into();
     let profile = ruleset.map_generation();
     let mut rng = NamedRng::new(seed, "mapgen");
-    let land = continents(topology, profile, &mut rng);
+    let land = continents(&topology, profile, &mut rng);
     let total_weight = profile
         .land
         .values()
@@ -65,7 +70,12 @@ pub fn generate_map_with_ruleset(topology: FlatHex, seed: [u8; 32], ruleset: &Ru
         }
         tiles.push(state);
     }
-    rivers(topology, &mut tiles, profile.river_source_percent, &mut rng);
+    rivers(
+        &topology,
+        &mut tiles,
+        profile.river_source_percent,
+        &mut rng,
+    );
     MapState {
         topology,
         tiles: tiles
@@ -87,7 +97,7 @@ fn draw<T>(rng: &mut NamedRng, scale: u64, choices: impl Iterator<Item = (T, u64
     None
 }
 
-fn continents(topology: FlatHex, profile: &MapGeneration, rng: &mut NamedRng) -> Vec<bool> {
+fn continents(topology: &BoardTopology, profile: &MapGeneration, rng: &mut NamedRng) -> Vec<bool> {
     let count = topology.tile_count();
     let target = ((count as u64 * u64::from(profile.land_percent) + 50) / 100) as usize;
     if target == 0 {
@@ -157,7 +167,12 @@ fn continents(topology: FlatHex, profile: &MapGeneration, rng: &mut NamedRng) ->
     owner.iter().map(|id| *id != 0).collect()
 }
 
-fn rivers(topology: FlatHex, tiles: &mut [TileState], source_percent: u8, rng: &mut NamedRng) {
+fn rivers(
+    topology: &BoardTopology,
+    tiles: &mut [TileState],
+    source_percent: u8,
+    rng: &mut NamedRng,
+) {
     if source_percent == 0 {
         return;
     }
@@ -182,7 +197,8 @@ fn rivers(topology: FlatHex, tiles: &mut [TileState], source_percent: u8, rng: &
             {
                 continue;
             }
-            let direction = RiverDirection::from_u8(((i + 3) % 6) as u8).unwrap();
+            let direction =
+                RiverDirection::from_u8(topology.reverse_slot(outlet, i, upstream) as u8).unwrap();
             drainage[index] = Some((direction, outlet));
             queue.push_back(upstream);
         }
@@ -205,6 +221,7 @@ fn rivers(topology: FlatHex, tiles: &mut [TileState], source_percent: u8, rng: &
 
 #[cfg(test)]
 mod tests {
+    use histeries_hex::FlatHex;
     use std::collections::BTreeSet;
 
     use super::*;

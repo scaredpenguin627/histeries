@@ -166,6 +166,248 @@ fn host() -> Process {
 }
 
 #[test]
+fn stdio_mcp_can_start_and_replay_a_spherical_game() {
+    let mut mcp = Process::spawn(
+        &["mcp", "--globe", "3", "--seed", "7"],
+        &[
+            ("HISTERIES_MCP_SEAT_1_TOKEN", "test-seat"),
+            ("HISTERIES_MCP_TOKEN", "test-seat"),
+        ],
+    );
+    let initial = mcp.value("observe", json!({}));
+    assert_eq!(initial["globe_frequency"], 3);
+    let tiles = initial["visible_tiles"].as_array().unwrap();
+    assert!(!tiles.is_empty() && tiles.len() < 92);
+    let next = mcp.value("advance_turn", json!({}));
+    assert_eq!(next["turn"], 1);
+    assert_eq!(next["globe_frequency"], 3);
+    let prior = mcp.value("replay", json!({"turn":0}));
+    assert_eq!(prior["visible_tiles"], initial["visible_tiles"]);
+}
+
+#[test]
+fn cli_globe_save_atlas_and_replay_use_the_same_tiles() {
+    use histeries_sim::{ReplayLog, Session};
+    let folder = std::env::temp_dir().join(format!("histeries-cli-globe-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_histeries"))
+            .current_dir(&folder)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let new = run(&[
+        "new",
+        "--globe",
+        "3",
+        "--seed",
+        "7",
+        "--output",
+        "world.hst",
+    ]);
+    assert!(
+        new.status.success(),
+        "{}",
+        String::from_utf8_lossy(&new.stderr)
+    );
+    let atlas = run(&["map", "world.hst"]);
+    assert!(atlas.status.success());
+    let ascii = String::from_utf8(atlas.stdout).unwrap();
+    let mut rows = ascii.lines();
+    assert_eq!(rows.next(), Some("Geodesic atlas, frequency 3, 92 cells"));
+    assert_eq!(
+        rows.flat_map(str::chars)
+            .filter(|c| !c.is_whitespace())
+            .count(),
+        92
+    );
+    let step = run(&[
+        "step",
+        "world.hst",
+        "--player",
+        "1",
+        "--output",
+        "step.hst",
+        "--replay-output",
+        "world.hrp",
+    ]);
+    assert!(
+        step.status.success(),
+        "{}",
+        String::from_utf8_lossy(&step.stderr)
+    );
+    assert!(run(&["replay", "world.hrp"]).status.success());
+    let state = Session::from_save_bytes(&std::fs::read(folder.join("step.hst")).unwrap()).unwrap();
+    let replay = ReplayLog::decode(&std::fs::read(folder.join("world.hrp")).unwrap()).unwrap();
+    assert_eq!(state.state_hash(), replay.replay().unwrap().state_hash());
+    let bad = run(&["new", "--globe", "3", "--width", "8", "--output", "bad.hst"]);
+    assert!(!bad.status.success() && !folder.join("bad.hst").exists());
+    for name in ["world.hst", "step.hst", "world.hrp"] {
+        std::fs::remove_file(folder.join(name)).unwrap();
+    }
+    std::fs::remove_dir(folder).unwrap();
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct GlobeTrace {
+    rounds: Vec<(u32, histeries_sim::StateHash)>,
+    winner: (histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
+    accepted: usize,
+    terminal_hash: histeries_sim::StateHash,
+}
+
+fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
+    use histeries_ai::{Player, ThreeLayerPlayer, plan_seats};
+    use histeries_net::lan::{LanClient, LanError, Refusal};
+    use histeries_rules_core::PlayerId;
+    use histeries_sim::{Command as Order, ReplayLog, Session};
+
+    let host = Process::spawn(
+        &[
+            "serve",
+            "--listen",
+            "127.0.0.1:0",
+            "--players",
+            "2",
+            "--seed",
+            "7",
+            "--globe",
+            "3",
+        ],
+        &[
+            ("HISTERIES_LAN_TOKEN_1", "one"),
+            ("HISTERIES_LAN_TOKEN_2", "two"),
+        ],
+    );
+    let address: SocketAddr = host.read()["listening"].as_str().unwrap().parse().unwrap();
+    let mut peers = [
+        LanClient::connect(address, PlayerId::new(1), "one".into()).unwrap(),
+        LanClient::connect(address, PlayerId::new(2), "two".into()).unwrap(),
+    ];
+    let mut reference =
+        Session::from_save_bytes(&peers[0].replica().session().save_bytes()).unwrap();
+    let mut planners = [ThreeLayerPlayer::default(), ThreeLayerPlayer::default()];
+    let mut boundaries = Vec::new();
+    let mut reconnected = false;
+    while reference.winner().is_none() {
+        let round = reference.turn();
+        assert!(round < 500, "globe game failed to finish");
+        // Both seats plan from their own view of the same round boundary.
+        let mut inputs: Vec<_> = peers
+            .iter()
+            .zip(&mut planners)
+            .map(|(peer, planner)| {
+                assert_eq!(
+                    peer.replica().position().hash,
+                    reference.state_hash().value()
+                );
+                let visible = peer.replica().session().observe(peer.seat()).unwrap();
+                assert_eq!(visible.board().globe_frequency(), Some(3));
+                (planner as &mut (dyn Player + Send), visible)
+            })
+            .collect();
+        let plans = plan_seats(&mut inputs, workers);
+        for (peer, plan) in peers.iter_mut().zip(plans) {
+            if reference.winner().is_some() {
+                break;
+            }
+            peer.sync().unwrap();
+            assert_eq!(
+                peer.replica().position().hash,
+                reference.state_hash().value()
+            );
+            for order in plan.commands {
+                match peer.submit(order.clone()) {
+                    Ok(()) => {
+                        reference.dispatch(order).unwrap();
+                        assert_eq!(
+                            peer.replica().position().hash,
+                            reference.state_hash().value()
+                        );
+                    }
+                    Err(LanError::Refused(Refusal::Rejected(_)))
+                        if !matches!(order, Order::TurnEnd { .. }) =>
+                    {
+                        assert!(reference.clone().dispatch(order).is_err());
+                    }
+                    Err(error) => panic!("globe submission failed: {error}"),
+                }
+                if reference.winner().is_some() {
+                    break;
+                }
+            }
+        }
+        if reference.turn() != round {
+            assert_eq!(reference.turn(), round + 1);
+            boundaries.push((reference.turn(), reference.state_hash()));
+        } else {
+            assert!(reference.winner().is_some(), "incomplete nonterminal round");
+        }
+        let loaded = Session::from_save_bytes(&reference.save_bytes()).unwrap();
+        assert_eq!(loaded.state_hash(), reference.state_hash());
+        for peer in &mut peers {
+            peer.sync().unwrap();
+            assert_eq!(
+                peer.replica().position().hash,
+                reference.state_hash().value()
+            );
+            assert_eq!(peer.replica().session().winner(), reference.winner());
+        }
+        if !reconnected && reference.turn() >= 5 {
+            peers[1] = LanClient::connect(address, PlayerId::new(2), "two".into()).unwrap();
+            reconnected = true;
+        }
+    }
+    assert!(reconnected && !boundaries.is_empty());
+    let log = ReplayLog::decode(&reference.replay().encode()).unwrap();
+    let mut playback = log.playback_session();
+    let mut reconstructed = Vec::new();
+    for order in log.commands() {
+        let before = playback.turn();
+        playback.dispatch(order.clone()).unwrap();
+        if playback.turn() != before {
+            reconstructed.push((playback.turn(), playback.state_hash()));
+        }
+    }
+    assert_eq!(reconstructed, boundaries);
+    assert_eq!(playback.save_bytes(), reference.save_bytes());
+    let result = GlobeTrace {
+        rounds: boundaries,
+        winner: reference.winner().unwrap(),
+        accepted: log.commands().len(),
+        terminal_hash: reference.state_hash(),
+    };
+    println!(
+        "geodesic_game seed=7 frequency=3 workers={workers} rounds={} accepted={} winner={:?} hash={:016x}",
+        result.rounds.len(),
+        result.accepted,
+        result.winner,
+        result.terminal_hash.value()
+    );
+    result
+}
+
+#[test]
+fn a_geodesic_lan_game_reaches_victory_and_replays_every_round() {
+    let serial = play_geodesic_lan_game(1);
+    assert_eq!(serial, play_geodesic_lan_game(8));
+    if let Some(path) = std::env::var_os("HISTERIES_GLOBE_TRACE") {
+        let mut trace = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
+        for (turn, hash) in &serial.rounds {
+            writeln!(
+                trace,
+                "{}",
+                json!({"turn":turn,"hash":format!("{:016x}",hash.value())})
+            )
+            .unwrap();
+        }
+        writeln!(trace, "{}", json!({"winner":serial.winner,"accepted":serial.accepted,"hash":format!("{:016x}",serial.terminal_hash.value())})).unwrap();
+        trace.flush().unwrap();
+    }
+}
+
+#[test]
 fn two_cli_players_verify_orders_and_turn_handoffs_over_tcp() {
     let host = host();
     let listening = host.read();

@@ -1,0 +1,6 @@
+# Playing on a globe
+
+- **designed** — Desktop, browser, CLI, local MCP and LAN hosts can create geodesic boards. The subdivision frequency determines their size. A saved session supplies its own topology. The standard playable opening uses the chosen seed and base map rules to place terrain, features, rivers, resources, cities and garrisons. Creation reports an error if the chosen small world cannot accommodate the requested frontier.
+- **designed** — A player can select and order a visible unit across any graph edge, including an edge of a pentagon. River directions refer to local polygon edge slots. The corresponding slot on the adjoining cell comes from the topology.
+- **designed** — The 3D client can rotate the globe and select its near-side visible cells. Far-side terrain and units remain behind the planet even where the near surface is fogged. The second view presents a planar atlas. The scenario editor works on the same tile IDs, with ordinary undo, save and playtest.
+- **designed** — The map envelope stores the sphere's subdivision frequency and canonical tile records. Existing flat saves and replays keep their original representation and behavior. Save/load, replay and remote replicas reconstruct the same spherical board and per-round hashes. Each player receives their own observation.

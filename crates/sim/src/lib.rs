@@ -16,7 +16,7 @@ mod conquest_tests;
 #[cfg(any(test, feature = "extensions"))]
 pub mod extensions;
 mod frontier;
-pub use frontier::{frontier, frontier_duel, seeded_frontier};
+pub use frontier::{frontier, frontier_duel, seeded_frontier, seeded_frontier_on};
 pub mod map;
 mod match_host;
 pub use match_host::MatchHost;
@@ -30,8 +30,8 @@ pub use session_view::{MatchObservation, MatchView, Viewpoint};
 pub mod unit;
 pub use city::{BuildingKind, City, District, DistrictKind, ProductionItem};
 pub use map::{
-    Feature, MapError, MapState, ResourceKind, RiverDirection, Terrain, generate_map,
-    generate_map_with_ruleset,
+    BoardTopology, Feature, GlobeCell, MapError, MapState, ResourceKind, RiverDirection, Terrain,
+    generate_map, generate_map_with_ruleset,
 };
 pub use progression::{PlayerProgress, VictoryKind};
 pub use unit::{PromotionKind, Unit, UnitKind};
@@ -1785,7 +1785,7 @@ impl SimulationState {
     }
 
     fn advance_raiders(&mut self) {
-        let Some(topology) = self.map.as_ref().map(MapState::topology) else {
+        let Some(topology) = self.map.as_ref().map(MapState::topology).cloned() else {
             return;
         };
         let raiders: Vec<_> = self
@@ -2056,7 +2056,7 @@ impl SimulationState {
             let adjacency = if rules == ReplayRules::CurrentV5 {
                 self.map
                     .as_ref()
-                    .map_or(0, |map| city.adjacency_production(&map.topology()))
+                    .map_or(0, |map| city.adjacency_production(map.topology()))
             } else {
                 0
             };
@@ -2547,12 +2547,19 @@ impl Observation {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct BoardObservation {
     turn: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    globe_frequency: Option<u32>,
     visible_tiles: Vec<VisibleTileObservation>,
     visible_units: Vec<VisibleUnitObservation>,
     visible_cities: Vec<VisibleCityObservation>,
 }
 
 impl BoardObservation {
+    /// Returns the public subdivision frequency when playing on a sphere.
+    pub const fn globe_frequency(&self) -> Option<u32> {
+        self.globe_frequency
+    }
+
     /// Returns the projected round.
     pub const fn turn(&self) -> u32 {
         self.turn
@@ -2601,6 +2608,9 @@ pub struct VisibleTileObservation {
     /// Center in topology-supplied integer display units.
     #[serde(skip)]
     pub embedding: histeries_hex::Embedding,
+    /// Visible spherical polygon in integer display units, ordered by local edge slot.
+    #[serde(skip)]
+    pub surface: Option<GlobeCell>,
     /// Stable tile ID.
     pub tile: TileId,
     /// Terrain category.

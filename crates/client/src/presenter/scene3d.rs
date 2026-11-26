@@ -1,5 +1,6 @@
 //! Orthographic diorama built exclusively from one board observation.
 
+mod globe;
 pub(crate) mod gpu;
 mod models;
 #[cfg(test)]
@@ -26,6 +27,7 @@ pub(super) struct Vertex {
 }
 
 pub(super) struct Camera3d {
+    globe: Option<globe::GlobeCamera>,
     center: Vec2,
     yaw: f32,
     pitch: f32,
@@ -36,6 +38,7 @@ pub(super) struct Camera3d {
 impl Default for Camera3d {
     fn default() -> Self {
         Self {
+            globe: None,
             center: Vec2::ZERO,
             yaw: -0.33,
             pitch: 0.78,
@@ -79,6 +82,10 @@ impl Camera3d {
     }
 
     pub(super) fn focus(&mut self, tile: &VisibleTileObservation) {
+        if let Some(cell) = &tile.surface {
+            self.globe.get_or_insert_default().focus(cell);
+            return;
+        }
         let axes = self.axes();
         let position = axes.screen(
             atlas::Camera::world(tile.embedding),
@@ -88,6 +95,13 @@ impl Camera3d {
     }
 
     pub(super) fn fit(&mut self, view: &BoardObservation, rect: Rect) {
+        if let Some(frequency) = view.globe_frequency()
+            && rect.is_positive()
+        {
+            self.globe.get_or_insert_default().fit(rect, frequency);
+            return;
+        }
+        self.globe = None;
         if view.visible_tiles().is_empty() || !rect.is_positive() {
             return;
         }
@@ -110,15 +124,27 @@ impl Camera3d {
     }
 
     pub(super) fn pan(&mut self, delta: Vec2) {
+        if let Some(globe) = &mut self.globe {
+            globe.pan(delta);
+            return;
+        }
         self.center -= self.axes().ground_delta(delta / self.scale);
     }
 
     pub(super) fn orbit(&mut self, delta: Vec2) {
+        if let Some(globe) = &mut self.globe {
+            globe.orbit(delta);
+            return;
+        }
         self.yaw = (self.yaw + delta.x * 0.009).rem_euclid(std::f32::consts::TAU);
         self.pitch = (self.pitch + delta.y * 0.009).clamp(0.38, 1.32);
     }
 
     pub(super) fn zoom(&mut self, factor: f32, at: Vec2) {
+        if let Some(globe) = &mut self.globe {
+            globe.zoom(factor, at);
+            return;
+        }
         let scale = (self.scale * factor).clamp(self.min_scale, 144.0);
         self.center += self
             .axes()
@@ -128,6 +154,7 @@ impl Camera3d {
 }
 
 struct Projection {
+    globe: Option<globe::GlobeProjection>,
     axes: Axes,
     center: Vec2,
     scale: f32,
@@ -145,6 +172,9 @@ impl Projection {
         let eye_limit =
             (half.y / camera.scale * axes.cos_pitch + models::MAX_ALTITUDE) / axes.sin_pitch;
         Self {
+            globe: camera
+                .globe
+                .map(|globe| globe::GlobeProjection::new(globe, rect)),
             axes,
             center: camera.center,
             scale: camera.scale,
@@ -155,6 +185,9 @@ impl Projection {
     }
 
     fn clip(&self, [x, y, z]: Point) -> [f32; 3] {
+        if let Some(globe) = &self.globe {
+            return globe.clip([x, y, z]);
+        }
         let ground = vec2(x, y) - self.center;
         let screen = self.axes.screen(ground, z) * self.ndc_scale;
         let eye = ground.dot(self.axes.down) * self.axes.cos_pitch + z * self.axes.sin_pitch;
@@ -197,6 +230,9 @@ impl Scene {
             rect,
         };
         let projection = Projection::new(camera, rect);
+        if let Some(globe) = &projection.globe {
+            globe.fog_disk(&mut scene.vertices);
+        }
         for tile in view.visible_tiles() {
             scene.batch(&projection, tile, |mesh| {
                 mesh.land(tile, selected == Some(tile.tile))
@@ -239,6 +275,29 @@ impl Scene {
         tile: &VisibleTileObservation,
         draw: impl FnOnce(&mut Mesh<'_>),
     ) {
+        if let (Some(globe), Some(cell)) = (&projection.globe, &tile.surface) {
+            let frame = globe::Tangent::new(cell);
+            let center = globe.clip(globe::position(cell.center));
+            // Enclose all local terrain and models before emitting detailed geometry.
+            let pad = frame.scale * 2.8;
+            let at = self.rect.center() + vec2(center[0], -center[1]) * self.rect.size() * 0.5;
+            let bounds = Rect::from_center_size(at, Vec2::splat(2.0 * pad * globe.radius));
+            if center[2] - 0.45 * pad <= 1.0 && self.rect.intersects(bounds) {
+                let start = self.vertices.len();
+                draw(&mut Mesh::on_globe(
+                    projection,
+                    &mut self.vertices,
+                    frame,
+                    tile.terrain,
+                ));
+                self.batches.push(Batch {
+                    owner: tile.tile,
+                    bounds,
+                    vertices: start..self.vertices.len(),
+                });
+            }
+            return;
+        }
         let center = atlas::Camera::world(tile.embedding);
         let height = elevation(tile.terrain);
         let bounds = projection.footprint(center, height + models::HEADROOM);

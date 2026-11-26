@@ -1,7 +1,7 @@
 //! A scenario draft keeps edits separate from the game being played.
 use crate::{
-    BoardObservation, Command, Feature, MapState, MatchHost, ResourceKind, RiverDirection, Session,
-    Terrain, UnitKind,
+    BoardObservation, BoardTopology, Command, Feature, MapState, MatchHost, ResourceKind,
+    RiverDirection, Session, Terrain, UnitKind,
 };
 use histeries_hex::{FlatHex, TileId};
 use histeries_rules_core::{PlayerId, UnitId};
@@ -42,13 +42,22 @@ pub struct ScenarioDraft {
 impl ScenarioDraft {
     /// Creates an empty non-wrapping board and its participating seats.
     pub fn blank(width: u32, height: u32, seats: u32) -> Result<Self, String> {
-        if !Self::PLAYERS.contains(&seats)
-            || !Self::DIMENSIONS.contains(&width)
-            || !Self::DIMENSIONS.contains(&height)
-        {
-            return Err("Use 1–128 tiles along each dimension and 2–8 players.".into());
-        }
         let topology = FlatHex::new(width, height, false, false).map_err(|e| e.to_string())?;
+        Self::blank_on(topology, seats)
+    }
+
+    /// Opens a blank scenario on an explicitly chosen board.
+    pub fn blank_on(topology: impl Into<BoardTopology>, seats: u32) -> Result<Self, String> {
+        let topology = topology.into();
+        if !Self::PLAYERS.contains(&seats) {
+            return Err("Use 2–8 players.".into());
+        }
+        if let BoardTopology::Flat(board) = &topology
+            && (!Self::DIMENSIONS.contains(&board.width())
+                || !Self::DIMENSIONS.contains(&board.height()))
+        {
+            return Err("Use 1–128 tiles along each dimension.".into());
+        }
         Self::open(
             &Session::with_map((1..=seats).map(PlayerId::new), MapState::blank(topology))
                 .save_bytes(),

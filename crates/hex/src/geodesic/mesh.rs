@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::{Cell, Embedding, Geodesic, SphereCell, TileId};
+use super::{AtlasFace, Cell, Embedding, Geodesic, SphereCell, TileId};
 
 // Cyclic permutations of (±1, ±phi, 0), scaled and rounded once. Vertex IDs
 // and outward triangle order below are part of the board's indexing contract.
@@ -42,6 +42,15 @@ const FACES: [[usize; 3]; 20] = [
     [8, 6, 7],
     [9, 8, 1],
 ];
+
+pub(super) fn atlas_face(chart: [u32; 2]) -> Option<AtlasFace> {
+    let [column, row] = chart;
+    if column >= 5 || row >= 4 {
+        return None;
+    }
+    let vertices = FACES[(row * 5 + column) as usize].map(|i| VERTICES[i].map(|x| x as i32));
+    Some(AtlasFace { chart, vertices })
+}
 
 struct Wedge {
     before: TileId,

@@ -50,12 +50,19 @@ jobs:
           timeout 100s xvfb-run -a -s "-screen 0 1280x1024x24" target/debug/histeries-client --seed 7 --capture target/gates/client.png
           timeout 100s xvfb-run -a -s "-screen 0 1280x1024x24" target/debug/histeries-client --3d --seed 7 --capture target/gates/client-3d.png
           bash scripts/measure-3d-frame.sh target/gates/client.png target/gates/client-3d.png > target/gates/client-3d.json
+          timeout 100s xvfb-run -a -s "-screen 0 1280x1024x24" target/debug/histeries-client --globe 3 --seed 7 --capture target/gates/globe.png
+          bash scripts/measure-3d-frame.sh target/gates/client-3d.png target/gates/globe.png > target/gates/globe-frame.json
       - name: Verify multiplayer clients through a real LAN host
         if: runner.os == 'Linux'
         timeout-minutes: 5
         run: |
           cargo build --locked -p histeries-cli --bin histeries
           bash scripts/test-multiplayer.sh
+      - name: Verify a complete globe match through two LAN replicas
+        shell: bash
+        run: |
+          set -o pipefail
+          HISTERIES_GLOBE_TRACE="$GITHUB_WORKSPACE/target/gates/globe-rounds.jsonl" cargo test --locked -p histeries-cli --test lan a_geodesic_lan_game -- --nocapture | tee target/gates/globe-match.txt
       - name: Attach per-round hashes and measurements
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,7 +77,11 @@ jobs:
             target/gates/client.png
             target/gates/client-3d.png
             target/gates/client-3d.json
+            target/gates/globe.png
+            target/gates/globe-frame.json
             target/gates/multiplayer/
+            target/gates/globe-match.txt
+            target/gates/globe-rounds.jsonl
       - name: Measure paired games against greedy
         if: runner.os == 'Linux'
         shell: bash
@@ -140,6 +151,7 @@ jobs:
             target/gates/web-measurements.json
             target/gates/web-3d.json
             target/gates/web-3d-orbit.json
+            target/gates/web-globe-orbit.json
 
   compare-hashes:
     needs: [fast, web]
@@ -162,6 +174,10 @@ jobs:
           pattern: fast-*
           path: traces
       - run: cargo xtask compare-fast traces/fast-Linux/fast.jsonl traces/fast-macOS/fast.jsonl traces/fast-Windows/fast.jsonl
+      - name: Compare each globe round and its terminal state across runners
+        run: |
+          cmp traces/fast-Linux/globe-rounds.jsonl traces/fast-macOS/globe-rounds.jsonl
+          cmp traces/fast-Linux/globe-rounds.jsonl traces/fast-Windows/globe-rounds.jsonl
       - uses: actions/download-artifact@v4
         with:
           name: web-test
@@ -189,7 +205,7 @@ jobs:
             jq -r '"Chrome \(.version) on \(.platform) used \(.adapter.vendor) \(.adapter.architecture)."' \
               traces/web-test/browser-runtime.json
             printf '\n| Save | Byte comparison |\n| --- | --- |\n'
-            for save in turn-1 before-woodland after-woodland; do
+            for save in turn-1 before-woodland after-woodland globe-turn-1; do
               if cmp "target/gates/browser-reference/$save.hst" "traces/web-test/browser-observed/$save.hst" >&2; then
                 result=Identical
               else
