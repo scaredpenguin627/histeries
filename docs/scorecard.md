@@ -2,6 +2,12 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 5 — Orbital Survey
+
+In the two-seat, seed-7 LAN campaign, seat 2 launched from city 1 on round 38, surveyed site 1 on round 39, returned to the entry on round 40 and recalled on round 41. The campaign finished with a science victory in 42 rounds and 499 accepted orders. The one- and eight-worker traces agreed on the terminal hash `7610db1ad688a1f3` and on each seat's projected chart at every boundary. [Campaign report](sessions/2026-11-27-off-map-theatres.md)
+
+The separate playable opening reaches Orbital Survey through 292 rounds of ordinary research. It is used by the native and browser save comparison. [Reproduce the opening](../README.md)
+
 ## Phase 5 — Late-game ages
 
 The two-seat MCP acceptance game observes three ages in order, rejects the orbital research policy before its unlock, adopts it after the second transition and reaches a science victory. Replaying from the second seat at the end still shows Founding. The native globe trace now records both seats' ages alongside each round hash for the one- and eight-worker comparison on Linux, macOS and Windows. [Session report](sessions/2026-11-27-late-game-ages.md)
@@ -11,7 +17,9 @@ The two-seat MCP acceptance game observes three ages in order, rejects the orbit
 | Current planner versus greedy, seeds 20000–20031 | 64 | 60 | 4 | 93.75% | +451 | 0.0000000037253 |
 | Current planner versus V1, seeds 40000–40031 | 64 | 44 | 20 | 68.75% | +135 | 0.00209045 |
 
-Both Windows GNU release runs used a 500-turn limit, both seat assignments for each seed and zero crashes. The fast workflow repeats these tournaments and uploads per-seed results.
+Both Windows GNU release runs used a 500-turn limit and both seat assignments for each seed. GitHub reproduced all 128 results with zero draws, errors or crashes. [Tournament records](https://github.com/scaredpenguin627/histeries/actions/runs/45893502412/artifacts/15152209606)
+
+PR #16 recorded Industrial for seat 2 at round 31, Orbital at round 38, and Industrial for seat 1 at round 39. All three native traces were byte-identical through the round-42 science victory, with 495 accepted orders and terminal hash `50d142d6e763c330`. The fast gates took 183.807 s on Linux, 283.149 s on macOS arm64 and 229.300 s on Windows MSVC. [Linux trace](https://github.com/scaredpenguin627/histeries/actions/runs/45893502412/artifacts/15152514268) · [macOS trace](https://github.com/scaredpenguin627/histeries/actions/runs/45893502412/artifacts/15154030076) · [Windows trace](https://github.com/scaredpenguin627/histeries/actions/runs/45893502412/artifacts/15153032748)
 
 ## Phase 5 — Playable globe
 

@@ -183,7 +183,10 @@ jobs:
           name: web-test
           path: traces/web-test
       - name: Generate native reference saves for browser parity
-        run: cargo run --locked -p histeries-client --example browser_reference -- target/gates/browser-reference
+        run: |
+          mkdir -p target/gates
+          cargo run --locked -p histeries-sim --example orbital_opening -- target/gates/orbital-opening.hst
+          cargo run --locked -p histeries-client --example browser_reference -- target/gates/browser-reference target/gates/orbital-opening.hst
       - name: Compare browser and native game and editor saves byte for byte
         run: |
           report=target/gates/browser-parity.md
@@ -205,7 +208,7 @@ jobs:
             jq -r '"Chrome \(.version) on \(.platform) used \(.adapter.vendor) \(.adapter.architecture)."' \
               traces/web-test/browser-runtime.json
             printf '\n| Save | Byte comparison |\n| --- | --- |\n'
-            for save in turn-1 before-woodland after-woodland globe-turn-1; do
+            for save in turn-1 before-woodland after-woodland globe-turn-1 orbital-survey; do
               if cmp "target/gates/browser-reference/$save.hst" "traces/web-test/browser-observed/$save.hst" >&2; then
                 result=Identical
               else

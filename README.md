@@ -39,6 +39,13 @@ The headless CLI uses the simulation command registry and versioned binary files
 
 Use `histeries new --globe 3 --seed 7 --output globe.hst` for a playable two-seat globe or add `--setup empty` to start with the generated terrain alone. `histeries map globe.hst` prints its terrain atlas. `histeries serve --globe 3 --seed 7` and `histeries mcp --globe 3 --seed 7` accept the same subdivision frequency. A saved world supplies its own topology when opened with `--state`.
 
+Completing the Industrial and Orbital age requirements opens **Orbital Survey**. Open the board selector or press **O** to switch between the surface and the chart. Launch from an owned city, end the round and select an adjacent site to survey. Return to the entry site to recall the expedition. Visited sites remain on your chart. To try this part of a campaign directly, generate a save through normal research orders and open it in the desktop client.
+
+```sh
+cargo run --locked -p histeries-sim --example orbital_opening -- orbit.hst
+cargo run --locked -p histeries-client -- --load orbit.hst
+```
+
 ```text
 histeries new --players 2 --setup frontier --width 8 --height 8 --seed 7 --output state.hst
 histeries step state.hst --player 1

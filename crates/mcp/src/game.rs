@@ -271,6 +271,7 @@ mod tests {
             "own_marker",
             "progress",
             "seat",
+            "theatres",
             "turn",
             "units",
             "victory",

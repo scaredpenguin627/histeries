@@ -325,6 +325,15 @@ name = "Orbital Age"
 required_technologies = ["tech_20"]
 unlocks = ["orbital_access"]
 
+[[theatres]]
+id = "orbit"
+name = "Orbital Survey"
+required_unlock = "orbital_access"
+width = 8
+height = 4
+wrap_x = true
+entry_tile = 0
+
 [[policies]]
 id = "policy_orbital_research"
 required_age = "orbital"

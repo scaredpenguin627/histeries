@@ -29,16 +29,28 @@ impl eframe::App for BrowserApp {
             self.announced_error.push_str(error);
         }
         let screen = self.game.screen();
-        if self.announced != Some(screen) {
-            let label = match screen {
+        if self.announced.as_ref() != Some(&screen) {
+            let label = match &screen {
                 Screen::Map {
                     turn,
                     three_d,
                     globe,
                 } => {
-                    let mode = if three_d { "3D " } else { "" };
-                    let shape = if globe { "globe" } else { "strategy map" };
+                    let mode = if *three_d { "3D " } else { "" };
+                    let shape = if *globe { "globe" } else { "strategy map" };
                     format!("Histeries {mode}{shape}, turn {turn}")
+                }
+                Screen::Theatre {
+                    name,
+                    turn,
+                    expedition,
+                    visited,
+                } => {
+                    let position = expedition.map_or_else(
+                        || "no expedition".to_owned(),
+                        |tile| format!("expedition at site {}", tile.index()),
+                    );
+                    format!("Histeries {name}, turn {turn}, {position}, {visited} visited")
                 }
                 Screen::Editor { globe: false } => "Histeries scenario editor".to_owned(),
                 Screen::Editor { globe: true } => "Histeries globe scenario editor".to_owned(),

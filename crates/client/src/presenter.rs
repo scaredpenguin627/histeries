@@ -6,6 +6,7 @@ mod inspector;
 pub(crate) mod scene3d;
 #[cfg(test)]
 mod tests;
+mod theatre;
 
 use eframe::egui::{
     self, Align, Align2, Button, Color32, FontId, Frame, Layout, Margin, Panel, RichText,
@@ -107,6 +108,7 @@ pub struct Presenter {
     feedback: Option<(String, bool)>,
     realm: bool,
     initialized: bool,
+    theatre_id: Option<String>,
 }
 
 impl Presenter {
@@ -239,7 +241,18 @@ impl Presenter {
                             .clicked();
                     });
                 });
+                self.board_chooser(ui, view);
             });
+        if let Some(chart) = self.active_theatre(view) {
+            let order = self.theatre(root, &board, chart);
+            return if end_turn {
+                Some(Command::TurnEnd {
+                    player: view.seat(),
+                })
+            } else {
+                order
+            };
+        }
         Panel::bottom("map_controls")
             .frame(frame(INK, 10, 5))
             .show(root, |ui| {

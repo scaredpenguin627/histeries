@@ -27,6 +27,8 @@ mod scenario;
 pub use scenario::{ScenarioBrush, ScenarioDraft};
 mod session_view;
 pub use session_view::{MatchObservation, MatchView, Viewpoint};
+mod theatre;
+pub use theatre::{TheatreObservation, TheatreTileObservation};
 pub mod unit;
 pub use city::{BuildingKind, City, District, DistrictKind, ProductionItem};
 pub use map::{
@@ -44,6 +46,8 @@ const REPLAY_MAGIC: &[u8; 4] = b"HRP1";
 const COMMAND_FORMAT_VERSION: u16 = 3;
 const STATE_FORMAT_VERSION: u16 = 5;
 const REPLAY_FORMAT_VERSION: u16 = 5;
+const THEATRE_FORMAT_VERSION: u16 = 6;
+const THEATRE_COMMAND_VERSION: u16 = 4;
 
 /// A deterministic hash of canonical simulation state bytes.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -340,6 +344,34 @@ pub enum Command {
         /// Stable policy identifier.
         policy: String,
     },
+    /// Sends an expedition from an owned city to a secondary board.
+    #[serde(rename = "theatre.launch")]
+    TheatreLaunch {
+        /// The issuing seat.
+        player: PlayerId,
+        /// Stable theatre identifier.
+        theatre: String,
+        /// The launching city.
+        city: CityId,
+    },
+    /// Surveys one adjacent site with the active expedition.
+    #[serde(rename = "theatre.move")]
+    TheatreMove {
+        /// The issuing seat.
+        player: PlayerId,
+        /// Stable theatre identifier.
+        theatre: String,
+        /// Destination on this theatre's own board.
+        tile: TileId,
+    },
+    /// Recalls the active expedition from the theatre entry.
+    #[serde(rename = "theatre.recall")]
+    TheatreRecall {
+        /// The issuing seat.
+        player: PlayerId,
+        /// Stable theatre identifier.
+        theatre: String,
+    },
     /// Clears one policy slot.
     #[serde(rename = "policy.remove")]
     PolicyRemove {
@@ -354,6 +386,9 @@ impl Command {
     /// Returns the stable registry ID for this command.
     pub const fn id(&self) -> &'static str {
         match self {
+            Self::TheatreLaunch { .. } => "theatre.launch",
+            Self::TheatreMove { .. } => "theatre.move",
+            Self::TheatreRecall { .. } => "theatre.recall",
             Self::TurnEnd { .. } => "turn.end",
             Self::EditorSetMarker { .. } => "editor.set_marker",
             Self::EditorSetTerrain { .. } => "editor.set_terrain",
@@ -408,16 +443,33 @@ impl Command {
             | Self::ResearchTechnology { player, .. }
             | Self::ResearchCivic { player, .. }
             | Self::PolicyAdopt { player, .. }
+            | Self::TheatreLaunch { player, .. }
+            | Self::TheatreMove { player, .. }
+            | Self::TheatreRecall { player, .. }
             | Self::PolicyRemove { player, .. } => Some(*player),
             Self::BarbarianSpawn { .. } => None,
         }
+    }
+
+    fn is_theatre(&self) -> bool {
+        matches!(
+            self,
+            Self::TheatreLaunch { .. } | Self::TheatreMove { .. } | Self::TheatreRecall { .. }
+        )
     }
 
     /// Encodes this command using the versioned custom binary format.
     pub fn encode(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(25);
         bytes.extend_from_slice(COMMAND_MAGIC);
-        put_u16(&mut bytes, COMMAND_FORMAT_VERSION);
+        put_u16(
+            &mut bytes,
+            if self.is_theatre() {
+                THEATRE_COMMAND_VERSION
+            } else {
+                COMMAND_FORMAT_VERSION
+            },
+        );
         match self {
             Self::TurnEnd { player } => {
                 bytes.push(0);
@@ -601,6 +653,31 @@ impl Command {
                 put_u8(&mut bytes, *slot);
                 put_string(&mut bytes, policy);
             }
+            Self::TheatreLaunch {
+                player,
+                theatre,
+                city,
+            } => {
+                bytes.push(25);
+                put_u32(&mut bytes, player.index());
+                put_string(&mut bytes, theatre);
+                put_u32(&mut bytes, city.index());
+            }
+            Self::TheatreMove {
+                player,
+                theatre,
+                tile,
+            } => {
+                bytes.push(26);
+                put_u32(&mut bytes, player.index());
+                put_string(&mut bytes, theatre);
+                put_u32(&mut bytes, tile.index());
+            }
+            Self::TheatreRecall { player, theatre } => {
+                bytes.push(27);
+                put_u32(&mut bytes, player.index());
+                put_string(&mut bytes, theatre);
+            }
             Self::PolicyRemove { player, slot } => {
                 bytes.push(20);
                 put_u32(&mut bytes, player.index());
@@ -614,8 +691,14 @@ impl Command {
     pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
         let mut reader = Reader::new(bytes);
         reader.expect_magic(COMMAND_MAGIC)?;
-        reader.expect_version(COMMAND_FORMAT_VERSION)?;
+        let version = reader.u16()?;
+        if !matches!(version, COMMAND_FORMAT_VERSION | THEATRE_COMMAND_VERSION) {
+            return Err(SerializationError::UnsupportedVersion(version));
+        }
         let kind = reader.u8()?;
+        if (version == THEATRE_COMMAND_VERSION) != matches!(kind, 25..=27) {
+            return Err(SerializationError::InvalidTag(kind));
+        }
         let command = match kind {
             0 => Self::TurnEnd {
                 player: PlayerId::new(reader.u32()?),
@@ -732,6 +815,20 @@ impl Command {
                 player: PlayerId::new(reader.u32()?),
                 unit: UnitId::new(reader.u32()?),
             },
+            25 => Self::TheatreLaunch {
+                player: PlayerId::new(reader.u32()?),
+                theatre: reader.string()?,
+                city: CityId::new(reader.u32()?),
+            },
+            26 => Self::TheatreMove {
+                player: PlayerId::new(reader.u32()?),
+                theatre: reader.string()?,
+                tile: TileId::new(reader.u32()?),
+            },
+            27 => Self::TheatreRecall {
+                player: PlayerId::new(reader.u32()?),
+                theatre: reader.string()?,
+            },
             20 => Self::PolicyRemove {
                 player: PlayerId::new(reader.u32()?),
                 slot: reader.u8()?,
@@ -843,6 +940,18 @@ static COMMAND_SPECS: &[CommandSpec] = &[
         schema: "player:u32,tile:u32,terrain:u8",
     },
     CommandSpec {
+        id: "theatre.launch",
+        schema: "player:u32,theatre:string,city:u32",
+    },
+    CommandSpec {
+        id: "theatre.move",
+        schema: "player:u32,theatre:string,tile:u32",
+    },
+    CommandSpec {
+        id: "theatre.recall",
+        schema: "player:u32,theatre:string",
+    },
+    CommandSpec {
         id: "turn.end",
         schema: "player:u32",
     },
@@ -899,6 +1008,7 @@ pub struct SimulationState {
     progress: BTreeMap<PlayerId, PlayerProgress>,
     victories: BTreeMap<PlayerId, VictoryKind>,
     ended_players: BTreeSet<PlayerId>,
+    surveys: theatre::Surveys,
 }
 
 impl SimulationState {
@@ -921,6 +1031,7 @@ impl SimulationState {
             progress,
             victories: BTreeMap::new(),
             ended_players: BTreeSet::new(),
+            surveys: BTreeMap::new(),
         }
     }
 
@@ -1025,12 +1136,22 @@ impl SimulationState {
                 }
             }
         }
+        if !self.surveys.is_empty() {
+            hasher.write_bytes(b"theatre-surveys-v1");
+            let mut bytes = Vec::new();
+            theatre::encode_surveys(&self.surveys, &mut bytes);
+            hasher.write_bytes(&bytes);
+        }
         hasher.finish()
     }
 
     /// Encodes state with a magic, format version, and canonical map ordering.
     pub fn encode(&self) -> Vec<u8> {
-        self.encode_version(STATE_FORMAT_VERSION)
+        self.encode_version(if self.surveys.is_empty() {
+            STATE_FORMAT_VERSION
+        } else {
+            THEATRE_FORMAT_VERSION
+        })
     }
 
     fn encode_version(&self, version: u16) -> Vec<u8> {
@@ -1092,6 +1213,9 @@ impl SimulationState {
         for player in &self.ended_players {
             put_u32(&mut bytes, player.index());
         }
+        if version == THEATRE_FORMAT_VERSION {
+            theatre::encode_surveys(&self.surveys, &mut bytes);
+        }
         bytes
     }
 
@@ -1100,7 +1224,7 @@ impl SimulationState {
         let mut reader = Reader::new(bytes);
         reader.expect_magic(STATE_MAGIC)?;
         let version = reader.u16()?;
-        if !matches!(version, 4 | STATE_FORMAT_VERSION) {
+        if !matches!(version, 4 | STATE_FORMAT_VERSION | THEATRE_FORMAT_VERSION) {
             return Err(SerializationError::UnsupportedVersion(version));
         }
         let turn = reader.u32()?;
@@ -1402,8 +1526,14 @@ impl SimulationState {
                 return Err(SerializationError::InvalidUnitState);
             }
         }
+        let surveys = if version == THEATRE_FORMAT_VERSION {
+            theatre::decode_surveys(&mut reader, turn, &progress)?
+        } else {
+            BTreeMap::new()
+        };
         reader.finish()?;
         Ok(Self {
+            surveys,
             turn,
             markers,
             map,
@@ -1604,6 +1734,19 @@ impl SimulationState {
                 policy,
             } => self.policy_adopt(*player, *slot, policy),
             Command::PolicyRemove { player, slot } => self.policy_remove(*player, *slot),
+            Command::TheatreLaunch {
+                player,
+                theatre,
+                city,
+            } => self.theatre_order(*player, theatre, theatre::Order::Launch(*city)),
+            Command::TheatreMove {
+                player,
+                theatre,
+                tile,
+            } => self.theatre_order(*player, theatre, theatre::Order::Move(*tile)),
+            Command::TheatreRecall { player, theatre } => {
+                self.theatre_order(*player, theatre, theatre::Order::Recall)
+            }
         }
     }
 
@@ -2449,12 +2592,18 @@ pub struct Observation {
     units: Vec<UnitObservation>,
     cities: Vec<CityObservation>,
     progress: ProgressObservation,
+    theatres: Vec<TheatreObservation>,
     victory: Option<VictoryKind>,
     #[serde(flatten)]
     board: BoardObservation,
 }
 
 impl Observation {
+    /// Returns the seat's unlocked boards and its own expedition history.
+    pub fn theatres(&self) -> &[TheatreObservation] {
+        &self.theatres
+    }
+
     /// Returns the observing seat.
     pub const fn seat(&self) -> PlayerId {
         self.seat
@@ -2817,6 +2966,15 @@ impl Event {
 /// Event payloads emitted by the simulation boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventKind {
+    /// A seat launched, moved or recalled an expedition.
+    ExpeditionChanged {
+        /// Seat that issued the order.
+        player: PlayerId,
+        /// Stable theatre identifier.
+        theatre: String,
+        /// The expedition's new location, or none after recall.
+        tile: Option<TileId>,
+    },
     /// A seat marker changed.
     MarkerSet {
         /// The seat whose marker changed.
@@ -2925,7 +3083,7 @@ impl ReplayRules {
             || !matches!(
                 command,
                 Command::UnitCaptureCity { .. } | Command::CityEnqueueProduction { .. }
-            )
+            ) && !command.is_theatre()
     }
 }
 
@@ -2967,19 +3125,23 @@ impl ReplayLog {
 
     /// Encodes the initial snapshot and command log.
     pub fn encode(&self) -> Vec<u8> {
-        let initial = self
-            .initial
-            .encode_version(if self.rules == ReplayRules::LegacyV4 {
-                4
-            } else {
-                STATE_FORMAT_VERSION
-            });
+        let initial = if self.rules == ReplayRules::LegacyV4 {
+            self.initial.encode_version(4)
+        } else {
+            self.initial.encode()
+        };
         let mut bytes = Vec::new();
         bytes.extend_from_slice(REPLAY_MAGIC);
         put_u16(
             &mut bytes,
             match self.rules {
                 ReplayRules::LegacyV4 => 4,
+                ReplayRules::CurrentV5
+                    if !self.initial.surveys.is_empty()
+                        || self.commands.iter().any(Command::is_theatre) =>
+                {
+                    THEATRE_FORMAT_VERSION
+                }
                 ReplayRules::CurrentV5 => REPLAY_FORMAT_VERSION,
             },
         );
@@ -2998,9 +3160,10 @@ impl ReplayLog {
     pub fn decode(bytes: &[u8]) -> Result<Self, SerializationError> {
         let mut reader = Reader::new(bytes);
         reader.expect_magic(REPLAY_MAGIC)?;
-        let rules = match reader.u16()? {
+        let version = reader.u16()?;
+        let rules = match version {
             4 => ReplayRules::LegacyV4,
-            REPLAY_FORMAT_VERSION => ReplayRules::CurrentV5,
+            REPLAY_FORMAT_VERSION | THEATRE_FORMAT_VERSION => ReplayRules::CurrentV5,
             version => return Err(SerializationError::UnsupportedVersion(version)),
         };
         let snapshot = reader.bytes()?;
@@ -3010,16 +3173,27 @@ impl ReplayLog {
             legacy.expect_version(4)?;
         }
         let initial = SimulationState::decode(snapshot)?;
+        if version < THEATRE_FORMAT_VERSION && !initial.surveys.is_empty() {
+            return Err(SerializationError::InvalidTheatreState);
+        }
         let count = reader.count()?;
         let mut commands = Vec::with_capacity(count);
         for _ in 0..count {
             let document = reader.bytes()?;
             let command = Command::decode(document)?;
             // Four bytes of magic and a two-byte version precede the opcode.
-            if !rules.supports(&command) {
+            if !rules.supports(&command)
+                || (version < THEATRE_FORMAT_VERSION && command.is_theatre())
+            {
                 return Err(SerializationError::InvalidTag(document[6]));
             }
             commands.push(command);
+        }
+        if version == THEATRE_FORMAT_VERSION
+            && initial.surveys.is_empty()
+            && !commands.iter().any(Command::is_theatre)
+        {
+            return Err(SerializationError::InvalidTheatreState);
         }
         reader.finish()?;
         Ok(Self {
@@ -3159,6 +3333,10 @@ impl Session {
 /// Errors raised while applying commands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DispatchError {
+    /// The theatre is unknown or its required capability is locked.
+    TheatreUnavailable,
+    /// Expedition status, location, or the turn's action budget precludes this order.
+    InvalidExpeditionOrder,
     /// A command named a seat absent from the state.
     UnknownPlayer(PlayerId),
     /// The turn counter would overflow.
@@ -3308,6 +3486,8 @@ impl fmt::Display for DispatchError {
             }
             Self::InvalidPolicySlot => formatter.write_str("invalid policy slot"),
             Self::PolicyAlreadyActive => formatter.write_str("policy is already active"),
+            Self::TheatreUnavailable => formatter.write_str("theatre unavailable"),
+            Self::InvalidExpeditionOrder => formatter.write_str("invalid expedition order"),
             Self::VictoryAlreadyReached => formatter.write_str("victory already reached"),
         }
     }
@@ -3342,6 +3522,8 @@ pub enum SerializationError {
     InvalidCityState,
     /// Technology, civic, policy, or victory data violated a simulation invariant.
     InvalidProgressState,
+    /// A secondary-board survey failed validation.
+    InvalidTheatreState,
     /// Bytes remained after the expected document.
     TrailingBytes,
 }
@@ -3366,6 +3548,9 @@ impl fmt::Display for SerializationError {
             Self::InvalidCityState => formatter.write_str("invalid city state in binary document"),
             Self::InvalidProgressState => {
                 formatter.write_str("invalid progression state in binary document")
+            }
+            Self::InvalidTheatreState => {
+                formatter.write_str("invalid theatre survey in binary document")
             }
             Self::TrailingBytes => formatter.write_str("trailing bytes in binary document"),
         }
@@ -3936,7 +4121,7 @@ mod tests {
             registry.find("city.found").unwrap().schema,
             "player:u32,city:u32,unit:u32"
         );
-        assert_eq!(registry.specs().len(), 25);
+        assert_eq!(registry.specs().len(), 28);
         assert!(
             registry
                 .validate(&Command::TurnEnd {

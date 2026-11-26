@@ -1,0 +1,9 @@
+# Off-map expeditions
+
+- `designed` A theatre is an additional tile graph in the current match. Its TOML record defines its stable ID, display name, required age capability, flat hex dimensions, optional wrapping and entry tile. A local tile ID always belongs to the named theatre.
+- `designed` The base ruleset opens Orbital Survey with the Orbital age. Its 8 × 4 board joins its east and west edges. A seat can launch an expedition from an owned city, travel to an adjacent tile and recall the expedition at its entry. Launch, travel and recall each consume that seat's one expedition action for the round in that theatre.
+- `designed` Each seat conducts its own survey. The entry is known when access opens. An expedition reveals its tile and neighboring tiles. A seat retains its chart on recall, including which tiles it visited. Seat-scoped observations expose only their owner's expedition and survey, and distinguish currently visible sites from charted sites. MCP seat tokens and player-facing clients consume these projections. Trusted LAN peers hold the complete simulation checkpoint for deterministic lockstep, including all seats' expedition records. [Multiplayer trust model](../docs/adr/0022-lockstep-multiplayer.md)
+- `designed` Ground units and cities continue using their original tile IDs. Advancing the turn on either board advances the same match. A player can switch between charts and return to the surface without spending an action.
+- `designed` Save/load, command replay and lockstep use the same expedition state. Existing saves without expeditions keep their encoding and state hash. Browser and native play must reproduce identical bytes after performing the same expedition orders.
+
+[Seat ages](ages.md) · [Board and campaign state](../docs/adr/0027-off-map-theatres.md)

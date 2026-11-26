@@ -236,3 +236,42 @@ game_menu
 click 153 75
 confirm
 globe_turn 1
+
+# Open a late-game save earned through ordinary research in a separate native process.
+opening=target/gates/orbital-opening.hst
+opening_info=$(cargo run --locked -q -p histeries-sim --example orbital_opening -- "$opening")
+round=$(sed -nE 's/^round=([0-9]+) .*/\1/p' <<<"$opening_info")
+[[ "$round" =~ ^[0-9]+$ ]] || fail "Missing orbital opening round."
+encoded=$(base64 -w0 "$opening")
+evaluate "localStorage.setItem('histeries.world.v1','$encoded'); return true" >/dev/null
+game_menu
+click 153 75
+confirm
+globe_turn "$round"
+chart() {
+    wait_for "return document.querySelector('canvas')?.getAttribute('aria-label') === 'Histeries Orbital Survey, turn $1, $2'" "Missing orbital chart state: turn $1, $2."
+}
+view_key o
+chart "$round" "no expedition, 0 visited"
+view_key l
+chart "$round" "expedition at site 0, 1 visited"
+view_key e
+round=$((round + 1))
+chart "$round" "expedition at site 0, 1 visited"
+view_key n
+chart "$round" "expedition at site 1, 2 visited"
+screenshot target/gates/web-orbital-survey.png
+view_key o
+globe_turn "$round"
+game_menu
+click 153 97
+confirm
+wait_for "return localStorage.getItem('histeries.world.v1') !== '$encoded'" "Orbital survey was not saved."
+slot world | base64 --decode >"$observed/orbital-survey.hst"
+reload_game
+game_menu
+click 153 75
+confirm
+globe_turn "$round"
+view_key o
+chart "$round" "expedition at site 1, 2 visited"

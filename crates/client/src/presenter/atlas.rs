@@ -96,7 +96,7 @@ impl Camera {
 }
 
 // Vertex zero is north. Each subsequent pair bounds the next clockwise river edge.
-fn vertices(center: Pos2, radius: f32) -> [Pos2; 6] {
+pub(super) fn vertices(center: Pos2, radius: f32) -> [Pos2; 6] {
     [
         vec2(0.0, -1.0),
         vec2(HALF_WIDTH, -0.5),
