@@ -13,13 +13,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-const USAGE: &str = "histeries-client [--seed INTEGER | --load GAME.hst] [--hotseat] [--players 2..8 (new hotseat only)] [--capture FRAME.png]\n     or: histeries-client --connect IP:PORT --seat ID [--capture FRAME.png] (set HISTERIES_LAN_TOKEN)";
+const USAGE: &str = "histeries-client [--seed INTEGER | --load GAME.hst] [--hotseat] [--players 2..8 (new hotseat only)] [--3d] [--capture FRAME.png]\n     or: histeries-client --connect IP:PORT --seat ID [--3d] [--capture FRAME.png] (set HISTERIES_LAN_TOKEN)";
 
 #[derive(Default)]
 struct Options {
     seed: Option<u64>,
     load: Option<PathBuf>,
     hotseat: bool,
+    three_d: bool,
     players: Option<u32>,
     connect: Option<SocketAddr>,
     seat: Option<PlayerId>,
@@ -35,6 +36,10 @@ impl Options {
             }
             if arg == "--hotseat" && !options.hotseat {
                 options.hotseat = true;
+                continue;
+            }
+            if arg == "--3d" && !options.three_d {
+                options.three_d = true;
                 continue;
             }
             let value = args.next().ok_or(USAGE)?;
@@ -98,12 +103,15 @@ impl Options {
                 .map_err(|_| "Set HISTERIES_LAN_TOKEN for the assigned seat.")?;
             let game = LanGame::connect(address, seat, token)?;
             crate::font::install(&cc.egui_ctx);
-            Ok(DesktopGame::Lan(Box::new(lan::LanApp::new(game))))
-        } else {
-            Ok(DesktopGame::Local(Box::new(GameApp::new(
-                cc,
-                self.session()?,
+            crate::presenter::scene3d::gpu::install(cc);
+            Ok(DesktopGame::Lan(Box::new(lan::LanApp::new(
+                game,
+                self.three_d,
             ))))
+        } else {
+            let mut app = GameApp::new(cc, self.session()?);
+            app.set_3d(self.three_d);
+            Ok(DesktopGame::Local(Box::new(app)))
         }
     }
 }
@@ -221,6 +229,7 @@ pub fn run() -> Result<(), String> {
             .with_inner_size([1200.0, 800.0])
             .with_min_inner_size([440.0, 380.0]),
         renderer: eframe::Renderer::Wgpu,
+        depth_buffer: 24,
         ..Default::default()
     };
     eframe::run_native(
@@ -248,6 +257,27 @@ pub fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relief_launch_supports_solo_hotseat_lan_and_capture() {
+        let parse = |args: &[&str]| {
+            Options::parse(args.iter().map(OsString::from))
+                .unwrap()
+                .unwrap()
+        };
+        assert!(!parse(&[]).three_d);
+        for args in [
+            vec!["--3d", "--seed", "7"],
+            vec!["--hotseat", "--3d", "--load", "match.hst"],
+            vec!["--connect", "127.0.0.1:8510", "--3d", "--seat", "2"],
+        ] {
+            let mut args = args;
+            args.extend(["--capture", "view.png"]);
+            let options = parse(&args);
+            assert!(options.three_d);
+            assert_eq!(options.capture.as_deref(), Some(Path::new("view.png")));
+        }
+    }
 
     #[test]
     fn lan_options_require_an_address_and_seat_and_exclude_local_modes() {

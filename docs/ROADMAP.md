@@ -57,7 +57,10 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 
 ## Phase 5+
 
-- [ ] Add the 3D client, HarmonyOS shell, Geodesic topology, late-game ages, and off-map theatres
+- [x] P5-01 Add a playable, depth-tested 3D match view to the desktop and WebGPU clients
+- [ ] Add the HarmonyOS NEXT PC shell with supported window and rendering backends
+- [ ] Add the Geodesic topology
+- [ ] Add late-game ages and off-map theatres
 
 
 

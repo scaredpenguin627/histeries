@@ -13,10 +13,10 @@ pub(super) struct LanApp {
 }
 
 impl LanApp {
-    pub(super) fn new(game: LanGame) -> Self {
+    pub(super) fn new(game: LanGame, three_d: bool) -> Self {
         Self {
             game,
-            presenter: Presenter::default(),
+            presenter: Presenter::new(three_d),
             submission_error: None,
         }
     }

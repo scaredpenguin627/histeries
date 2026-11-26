@@ -41,12 +41,12 @@ impl FileAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Screen {
     Editor,
-    Map(u32),
+    Map { turn: u32, three_d: bool },
     Handoff(histeries_rules_core::PlayerId),
     Result(histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
 }
 
-/// The portable 2D game interface presented by a native or web eframe host.
+/// The game interface shared by the native and web eframe hosts.
 pub struct GameApp {
     game: ClientSession,
     playtest: Option<(ClientSession, Presenter)>,
@@ -80,10 +80,12 @@ impl GameApp {
         if self.editing {
             return Screen::Editor;
         }
-        let active = self
+        let (active, presenter) = self
             .playtest
             .as_ref()
-            .map_or(&self.game, |(trial, _)| trial);
+            .map_or((&self.game, &self.presenter), |(trial, trial_view)| {
+                (trial, trial_view)
+            });
         if let Some(player) = active.handoff_seat() {
             Screen::Handoff(player)
         } else if active.is_hotseat()
@@ -91,14 +93,23 @@ impl GameApp {
         {
             Screen::Result(winner, kind)
         } else {
-            Screen::Map(active.observation().turn())
+            Screen::Map {
+                turn: active.observation().turn(),
+                three_d: presenter.three_d,
+            }
         }
     }
 
     /// Presents an existing session and initializes the client font atlas.
     pub fn new(cc: &eframe::CreationContext<'_>, game: ClientSession) -> Self {
         font::install(&cc.egui_ctx);
+        crate::presenter::scene3d::gpu::install(cc);
         Self::with_game(game, ModManager::restore(cc.storage))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn set_3d(&mut self, enabled: bool) {
+        self.presenter.three_d = enabled;
     }
 
     fn with_game(game: ClientSession, mods: ModManager) -> Self {
@@ -145,7 +156,7 @@ impl GameApp {
         let draft = self.editor.as_ref().ok_or("No scenario is open.")?;
         let trial = ClientSession::from_save_bytes(draft.bytes())?;
         self.close_dialog();
-        self.playtest = Some((trial, Presenter::default()));
+        self.playtest = Some((trial, Presenter::new(self.presenter.three_d)));
         self.editing = false;
         Ok(())
     }
@@ -254,7 +265,7 @@ impl GameApp {
         self.editor = None;
         self.return_to_game();
         self.game = game;
-        self.presenter = Presenter::default();
+        self.presenter.reset();
         Ok(())
     }
 
@@ -527,7 +538,13 @@ mod tests {
         assert_ne!(trial.save_bytes(), live);
         assert_ne!(trial.save_bytes(), draft);
         let trial_turn = trial.observation().turn();
-        assert_eq!(app.screen(), Screen::Map(trial_turn));
+        assert_eq!(
+            app.screen(),
+            Screen::Map {
+                turn: trial_turn,
+                three_d: false
+            }
+        );
         app.open_editor().unwrap();
         assert!(app.editing && app.playtest.is_none());
         assert_eq!(app.screen(), Screen::Editor);
@@ -537,7 +554,13 @@ mod tests {
         app.return_to_game();
         assert!(app.dialog.is_none() && app.error.is_empty());
         assert_eq!(app.game.save_bytes(), live);
-        assert_eq!(app.screen(), Screen::Map(app.game.observation().turn()));
+        assert_eq!(
+            app.screen(),
+            Screen::Map {
+                turn: app.game.observation().turn(),
+                three_d: false
+            }
+        );
         assert!(!app.editing && app.playtest.is_none());
 
         app.open_editor().unwrap();

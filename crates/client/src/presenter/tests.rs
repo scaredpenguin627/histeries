@@ -139,16 +139,19 @@ fn game_menu_starts_hotseat_and_hides_the_map_between_two_real_turns() {
                 "Game".into()
             ]
         );
+        assert!(map_callback(&screen).is_none());
         screen = click_at(text_center(&screen, "Reveal my map"), &mut draw);
         text_center(&screen, &format!("Seat {seat}"));
         text_center(&screen, "Turn 0");
         if seat == 1 {
+            screen = click_at(text_center(&screen, "3D"), &mut draw);
             screen = click_at(text_center(&screen, "Game"), &mut draw);
             let menu = labels(&screen);
             assert!(menu.contains(&"Save hotseat game"));
             assert!(!menu.contains(&"Scenario editor"));
             screen = click_at(text_center(&screen, "Game"), &mut draw);
         }
+        assert!(map_callback(&screen).is_some());
         screen = click_at(text_center(&screen, "End turn"), &mut draw);
     }
     assert_eq!(labels(&screen), ["Pass to seat 1", "Reveal my map", "Game"]);
@@ -297,7 +300,7 @@ fn targeted_move_preserves_an_invalid_order_for_retry_and_selects_its_destinatio
     );
     assert!(state.target == Some(Target::Move(unit.id)));
     let target_at = unit_at + world_delta * state.camera.radius;
-    click(&ctx, &mut state, &mut game, size, target_at);
+    move_past_caption(&ctx, &mut state, &mut game, size, target_at, destination);
     assert_eq!(game.observation().units()[0].tile, destination);
     assert_eq!(state.selected, Some(destination));
     assert!(state.target.is_none());
@@ -316,6 +319,172 @@ fn unit_badge(output: &FullOutput) -> Pos2 {
             _ => None,
         })
         .expect("the opening unit marker is visible")
+}
+
+fn map_callback(output: &FullOutput) -> Option<Rect> {
+    output.shapes.iter().find_map(|shape| match &shape.shape {
+        Shape::Callback(callback) => Some(callback.rect),
+        _ => None,
+    })
+}
+
+/// Position a legal tile across the prompt edge and click each side.
+fn move_past_caption(
+    ctx: &Context,
+    state: &mut Presenter,
+    game: &mut ClientSession,
+    size: Vec2,
+    destination_at: Pos2,
+    destination: TileId,
+) -> FullOutput {
+    let unit = game.observation().units()[0];
+    let prompt = Target::Move(unit.id).prompt();
+    let screen = frame(ctx, state, game, size, vec![]);
+    let bounds = screen
+        .shapes
+        .windows(2)
+        .find_map(|pair| match (&pair[0].shape, &pair[1].shape) {
+            (Shape::Rect(background), Shape::Text(label))
+                if label.galley.text() == prompt
+                    && background.fill == INK
+                    && background.rect.contains(label.pos) =>
+            {
+                Some(background.rect)
+            }
+            _ => None,
+        })
+        .expect("painted map prompt");
+    let covered = bounds.center_top() + vec2(0.0, 1.0);
+    let exposed = covered - vec2(0.0, 5.0);
+    let delta = covered - destination_at;
+    if state.three_d {
+        state.camera3d.pan(delta);
+        let view = game.observation();
+        let scene = scene3d::Scene::build(
+            view.board(),
+            view.seat(),
+            &state.camera3d,
+            map_callback(&screen).unwrap(),
+            state.selected,
+        );
+        assert_eq!(
+            scene.pick(covered),
+            Some(destination),
+            "covered tile at {covered:?} on {size:?}"
+        );
+        assert_eq!(
+            scene.pick(exposed),
+            Some(destination),
+            "exposed tile at {exposed:?} on {size:?}"
+        );
+    } else {
+        state.camera.center -= delta / state.camera.radius;
+    }
+    let screen = click(ctx, state, game, size, covered);
+    assert_ne!(
+        screen.platform_output.cursor_icon,
+        egui::CursorIcon::Crosshair
+    );
+    assert_eq!(game.observation().units()[0].tile, unit.tile);
+    assert!(state.target == Some(Target::Move(unit.id)));
+    click(ctx, state, game, size, exposed)
+}
+
+#[test]
+fn relief_picks_visible_tiles_and_issues_moves_through_the_turn_controls() {
+    for size in [vec2(1024.0, 700.0), vec2(400.0, 760.0)] {
+        let ctx = Context::default();
+        crate::font::install(&ctx);
+        let mut state = Presenter::default();
+        let mut game = ClientSession::new(7).unwrap();
+        frame(&ctx, &mut state, &mut game, size, vec![]);
+        let atlas = frame(&ctx, &mut state, &mut game, size, vec![]);
+        assert!(map_callback(&atlas).is_none());
+        let screen = click(&ctx, &mut state, &mut game, size, text_center(&atlas, "3D"));
+        let rect = map_callback(&screen).expect("relief map submitted for drawing");
+        let view = game.observation();
+        let unit = view.units()[0];
+        let origin = visible(view.board(), unit.tile).unwrap();
+        let destination = origin
+            .neighbors
+            .iter()
+            .copied()
+            .find(|&destination| {
+                let mut trial = ClientSession::from_save_bytes(&game.save_bytes()).unwrap();
+                trial
+                    .dispatch(Command::UnitMove {
+                        player: view.seat(),
+                        unit: unit.id,
+                        destination,
+                    })
+                    .is_ok()
+            })
+            .unwrap();
+        let scene = scene3d::Scene::build(
+            view.board(),
+            view.seat(),
+            &state.camera3d,
+            rect,
+            state.selected,
+        );
+        let aim = |tile| {
+            (8..rect.height() as u32)
+                .step_by(8)
+                .find_map(|y| {
+                    (8..rect.width() as u32)
+                        .step_by(8)
+                        .map(|x| rect.min + vec2(x as f32, y as f32))
+                        .find(|&at| {
+                            scene.pick(at) == Some(tile)
+                                && scene.pick(at - vec2(0.0, 5.0)) == Some(tile)
+                        })
+                })
+                .expect("tile visible in the current camera")
+        };
+        let unit_at = aim(unit.tile);
+        let destination_at = aim(destination);
+        let selected = click(&ctx, &mut state, &mut game, size, unit_at);
+        assert_eq!(state.selected, Some(unit.tile));
+        click(
+            &ctx,
+            &mut state,
+            &mut game,
+            size,
+            text_center(&selected, "Move"),
+        );
+        let fog = rect.min + Vec2::splat(2.0);
+        assert_eq!(scene.pick(fog), None);
+        click(&ctx, &mut state, &mut game, size, fog);
+        assert_eq!(state.selected, Some(unit.tile));
+        assert!(state.target == Some(Target::Move(unit.id)));
+        let moved = move_past_caption(
+            &ctx,
+            &mut state,
+            &mut game,
+            size,
+            destination_at,
+            destination,
+        );
+        assert_eq!(game.observation().units()[0].tile, destination);
+        assert_eq!(state.selected, Some(destination));
+        let next = click(
+            &ctx,
+            &mut state,
+            &mut game,
+            size,
+            text_center(&moved, "End turn"),
+        );
+        text_center(&next, "Turn 1");
+        let shortcut = Event::Key {
+            key: egui::Key::V,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        let atlas = frame(&ctx, &mut state, &mut game, size, vec![shortcut]);
+        assert!(map_callback(&atlas).is_none());
+    }
 }
 
 #[test]

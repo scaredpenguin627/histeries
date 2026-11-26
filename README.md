@@ -8,6 +8,8 @@ The headless game supports seeded continents, military and civilian units, citie
 
 Run `cargo run --locked -p histeries-client` to start a two-seat game. Click a hex to inspect it, select an order and click its target. Drag the map to pan and scroll or pinch to zoom. The computer plans its turn when you end yours. The Game menu starts a new game or opens and saves a standard simulation save.
 
+For the 3D map, launch `cargo run --locked -p histeries-client -- --3d --seed 7` or switch views using the map toolbar. Press **V** to switch during a desktop or browser match. Drag with the right mouse button to orbit, drag with the left to pan, and scroll to zoom. Use the camera menu to reframe the map. Click terrain, a city or a unit to select its tile and use the same inspector to give orders. [3D match view](specs/three-dimensional-client.md)
+
 ```text
 cargo run --locked -p histeries-client -- --seed 7
 cargo run --locked -p histeries-client -- --load campaign.hst
