@@ -16,15 +16,15 @@ The implementation commit immediately before this measurement has Git tree `a6ea
 
 ### P3-04 browser client
 
-GitHub Actions measured the following results on PR #11, revision `79977c65564c`, attempt 1. The three fast-gate times come from the runners' `ci-fast.json` artifacts. Each passed the 900-second budget. [Workflow run and artifacts](https://github.com/scaredpenguin627/histeries/actions/runs/44778930058)
+GitHub Actions measured revision `5b9e4bd2dc3e` in PR #11. All 176 workspace tests and 34 parity checks passed. Six games produced 1,200 matching per-round hashes across the three hosted platforms. Each runner recorded the elapsed time of `cargo xtask ci-fast` against the 900-second budget. [Hosted gate report](https://github.com/scaredpenguin627/histeries/actions/runs/45777597028/job/139772278887)
 
 | Hosted fast gate | Elapsed |
 | --- | ---: |
-| Linux | 207.194 s |
-| macOS | 307.127 s |
-| Windows MSVC | 543.587 s |
+| Linux (4 logical CPUs) | 162.758 s |
+| macOS | 250.886 s |
+| Windows MSVC | 286.683 s |
 
-The Linux Web job took 186 s from job start to completion. Chrome and ChromeDriver 157.0.8103.78 used Google SwiftShader. The release Wasm module was 9,825,595 bytes and the downloadable site archive was 2,727,896 bytes. The comparison job matched the turn-1 game and both scenario saves before and after applying Woodland against their native counterparts, byte for byte. [Web job](https://github.com/scaredpenguin627/histeries/actions/runs/44778930058/job/136436144294) · [Cross-platform and save comparisons](https://github.com/scaredpenguin627/histeries/actions/runs/44778930058)
+The Linux Web job took 183 seconds against its 30-minute timeout. The interval from the first step through release upload was 177.052 seconds. Chrome and ChromeDriver 157.0.8103.78 used Google SwiftShader. The release Wasm module was 9,825,595 bytes, and the site archive was 2,727,896 bytes. The turn-1 game and the scenario saves from before and after applying Woodland each matched their native reference byte for byte. [Web job](https://github.com/scaredpenguin627/histeries/actions/runs/45777597028/job/139764942246) · [Downloadable measurements and parity evidence](https://github.com/scaredpenguin627/histeries/actions/runs/45777597028/artifacts/15097821730)
 
 ## Phase 2 measurements · 2026-11-19
 
