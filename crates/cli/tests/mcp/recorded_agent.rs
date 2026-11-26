@@ -89,6 +89,10 @@ fn replay_game(archive: &[u8], seed: &str, exchanges: usize, winning_turn: u32) 
                     let mut actual = rules(result);
                     let tables = actual.as_table_mut().unwrap();
                     assert!(tables.remove("ages").is_some());
+                    let boards = tables.remove("theatres").expect("base orbital board");
+                    let boards = boards.as_array().unwrap();
+                    assert_eq!(boards.len(), 1);
+                    assert_eq!(boards[0]["id"].as_str(), Some("orbit"));
                     let policies = tables.get_mut("policies").unwrap().as_array_mut().unwrap();
                     let orbital = policies
                         .iter()
@@ -106,6 +110,24 @@ fn replay_game(archive: &[u8], seed: &str, exchanges: usize, winning_turn: u32) 
                     assert_eq!(result["isError"] == true, recorded["isError"] == true);
                     let view = &result["structuredContent"];
                     let mut historical = view.clone();
+                    if name == "list_commands" {
+                        let catalog = historical["commands"].as_array_mut().unwrap();
+                        for id in ["theatre.launch", "theatre.move", "theatre.recall"] {
+                            let index = catalog
+                                .iter()
+                                .position(|entry| entry["id"] == id)
+                                .expect("registered theatre order");
+                            catalog.remove(index);
+                        }
+                    } else if historical.get("progress").is_some() {
+                        assert!(
+                            historical
+                                .as_object_mut()
+                                .unwrap()
+                                .remove("theatres")
+                                .is_some()
+                        );
+                    }
                     if let Some(progress) = historical.get_mut("progress") {
                         let fields = progress.as_object_mut().unwrap();
                         assert!(fields.remove("age").is_some());

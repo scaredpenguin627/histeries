@@ -623,3 +623,120 @@ fn first_frame_centers_the_visible_footprint_in_the_chart() {
     let fill = (extent.width() / viewport.width()).max(extent.height() / viewport.height());
     assert!((0.55..0.70).contains(&fill), "opening fill {fill}");
 }
+
+#[test]
+fn expedition_orders_follow_the_chart_and_respect_the_active_seat_in_both_layouts() {
+    use histeries_sim::{TheatreObservation, TheatreTileObservation};
+
+    let game = ClientSession::new(7).unwrap();
+    let view = game.observation();
+    let player = view.seat();
+    let entry = TileId::new(0);
+    let current = TileId::new(1);
+    let fresh = TileId::new(2);
+    let chart = TheatreObservation {
+        id: "survey".into(),
+        name: "Survey chart".into(),
+        entry,
+        expedition: Some(current),
+        can_launch: false,
+        can_move: true,
+        can_recall: false,
+        tiles: (0..3)
+            .map(|i| TheatreTileObservation {
+                tile: TileId::new(i),
+                embedding: Embedding {
+                    x: 2 * i as i32,
+                    y: 0,
+                },
+                neighbors: if i == 1 {
+                    vec![entry, fresh]
+                } else {
+                    vec![current]
+                },
+                visited: i != 2,
+                visible: true,
+            })
+            .collect(),
+    };
+    for size in [vec2(1024.0, 700.0), vec2(400.0, 760.0)] {
+        let ctx = Context::default();
+        crate::font::install(&ctx);
+        let state = Presenter::default();
+        let keyboard = |key| {
+            [true, false]
+                .into_iter()
+                .map(|pressed| Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                })
+                .collect()
+        };
+        let mut submitted = Vec::new();
+        let mut draw = |chart: &TheatreObservation, can_order, events| {
+            draw_frame(&ctx, size, events, |ui| {
+                let board = BoardView {
+                    observation: view,
+                    winner: None,
+                    can_order,
+                    show_seat: false,
+                };
+                if let Some(order) = state.theatre(ui, &board, chart) {
+                    submitted.push(order);
+                }
+            })
+        };
+        draw(&chart, true, vec![]);
+        let screen = draw(&chart, true, vec![]);
+        text_center(&screen, "2 visited · 3 charted");
+        // Select the entry tile on the chart itself, independent of the orders panel.
+        click_at(text_center(&screen, "Entry\n0"), |events| {
+            draw(&chart, true, events)
+        });
+        draw(&chart, true, keyboard(egui::Key::N));
+        draw(&chart, false, keyboard(egui::Key::N));
+        draw(&chart, false, keyboard(egui::Key::E));
+        draw(&chart, true, keyboard(egui::Key::R));
+        let mut landed = chart.clone();
+        landed.expedition = Some(entry);
+        landed.can_recall = true;
+        draw(&landed, true, keyboard(egui::Key::R));
+        landed.expedition = None;
+        landed.can_move = false;
+        landed.can_recall = false;
+        landed.can_launch = true;
+        let recalled = draw(&landed, false, keyboard(egui::Key::L));
+        text_center(&recalled, "2 visited · 3 charted");
+        draw(&landed, true, keyboard(egui::Key::L));
+        draw(&landed, true, keyboard(egui::Key::E));
+        let theatre = chart.id.clone();
+        assert_eq!(
+            submitted,
+            [
+                Command::TheatreMove {
+                    player,
+                    theatre: theatre.clone(),
+                    tile: entry
+                },
+                Command::TheatreMove {
+                    player,
+                    theatre: theatre.clone(),
+                    tile: fresh
+                },
+                Command::TheatreRecall {
+                    player,
+                    theatre: theatre.clone()
+                },
+                Command::TheatreLaunch {
+                    player,
+                    theatre,
+                    city: view.cities()[0].id
+                },
+                Command::TurnEnd { player },
+            ]
+        );
+    }
+}

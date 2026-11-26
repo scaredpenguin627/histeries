@@ -14,6 +14,8 @@ use serde::Deserialize;
 
 mod age;
 pub use age::AgeDefinition;
+mod theatre;
+pub use theatre::TheatreDefinition;
 mod map_generation;
 pub use map_generation::{Feature, LandGeneration, MapGeneration, ResourceKind, Terrain};
 
@@ -40,6 +42,7 @@ pub struct Ruleset {
     technologies: BTreeMap<String, TechnologyDefinition>,
     civics: BTreeMap<String, CivicDefinition>,
     ages: Vec<AgeDefinition>,
+    theatres: Vec<TheatreDefinition>,
     policies: BTreeMap<String, PolicyDefinition>,
     districts: BTreeMap<String, DistrictDefinition>,
     buildings: BTreeMap<String, BuildingDefinition>,
@@ -108,6 +111,7 @@ impl Ruleset {
             prerequisites: raw.prerequisites,
         })?;
         let age_ids = age::validate(&raw.ages, &technologies, &civics)?;
+        let theatres = theatre::validated(raw.theatres, &raw.ages)?;
         let mut policies = BTreeMap::new();
         for raw_policy in raw.policies {
             validate_id("policy", &raw_policy.id)?;
@@ -256,6 +260,7 @@ impl Ruleset {
             technologies,
             civics,
             ages: raw.ages,
+            theatres,
             policies,
             districts,
             buildings,
@@ -266,6 +271,16 @@ impl Ruleset {
     /// Returns ages in progression order, starting with the initial age.
     pub fn ages(&self) -> &[AgeDefinition] {
         &self.ages
+    }
+
+    /// Additional boards in stable identifier order.
+    pub fn theatres(&self) -> &[TheatreDefinition] {
+        &self.theatres
+    }
+
+    /// An additional board by its stable identifier.
+    pub fn theatre(&self, id: &str) -> Option<&TheatreDefinition> {
+        self.theatres.iter().find(|theatre| theatre.id() == id)
     }
 
     /// Whether a seat in `current` has entered the required age.
@@ -678,6 +693,8 @@ struct RawRuleset {
     civics: Vec<RawProgression>,
     #[serde(default)]
     ages: Vec<AgeDefinition>,
+    #[serde(default)]
+    theatres: Vec<TheatreDefinition>,
     #[serde(default)]
     policies: Vec<RawPolicy>,
     #[serde(default)]

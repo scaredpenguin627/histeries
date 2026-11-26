@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added a playable Orbital Survey chart to an ongoing match. An expedition can launch from a city, survey adjacent sites and return home. Saves and replays retain the survey, and each player's screen shows their own chart.
+
 - Added seat-specific ages with research and civic prerequisites, research carry-over rules and cumulative unlocks. The Realm panel shows the current age and lets players adopt newly available policies.
 
 - Added playable spherical worlds to solo, hotseat, LAN and MCP. The desktop and WebGPU clients can rotate the planet, inspect pentagons, order units and edit spherical scenarios. Flat saves retain their original encoding.

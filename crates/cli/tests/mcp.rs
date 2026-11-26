@@ -453,6 +453,7 @@ async fn play(client: &Client) {
         true
     );
     let mut observed_ages = Vec::new();
+    let mut expedition_orders = 0;
     for _ in 0..500 {
         let progress = &view["progress"];
         let age = progress["age"]["id"].as_str().unwrap();
@@ -468,6 +469,22 @@ async fn play(client: &Client) {
                 client
                     .value("one", "dispatch", orbital_policy.clone())
                     .await;
+            }
+        }
+        if let Some(chart) = view["theatres"].as_array().unwrap().first() {
+            let id = chart["id"].as_str().unwrap();
+            let order = match expedition_orders {
+                0 => Some(
+                    json!({"id":"theatre.launch","args":{"theatre":id,"city":view["cities"][0]["id"]}}),
+                ),
+                1 => Some(json!({"id":"theatre.move","args":{"theatre":id,"tile":1}})),
+                2 => Some(json!({"id":"theatre.move","args":{"theatre":id,"tile":chart["entry"]}})),
+                3 => Some(json!({"id":"theatre.recall","args":{"theatre":id}})),
+                _ => None,
+            };
+            if let Some(order) = order {
+                client.value("one", "dispatch", order).await;
+                expedition_orders += 1;
             }
         }
         if progress["current_technology"].is_null() {
@@ -503,6 +520,9 @@ async fn play(client: &Client) {
             assert_eq!(replay["progress"]["technologies"], json!([]));
             assert_eq!(replay["progress"]["age"]["id"], "founding");
             assert_eq!(observed_ages, ["founding", "industrial", "orbital"]);
+            assert_eq!(expedition_orders, 4);
+            assert_eq!(replay["theatres"], json!([]));
+            assert!(view["theatres"][0]["expedition"].is_null());
             assert_eq!(
                 client.tool("one", "replay", json!({"turn":0})).await["isError"],
                 true

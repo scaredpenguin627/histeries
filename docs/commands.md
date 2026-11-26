@@ -19,6 +19,9 @@ Every state change uses one registry entry with a stable ID, schema, validator, 
 | `policy.remove` | `player:u32,slot:u8` | Clears an owned seat's policy slot. Slot validation tests cover the command. |
 | `research.civic` | `player:u32,civic:string` | Selects a validated civic whose prerequisites are complete. Progress and binary round-trip tests cover the command. |
 | `research.technology` | `player:u32,technology:string` | Selects a validated technology whose prerequisites are complete. Progress and binary round-trip tests cover the command. |
+| `theatre.launch` | `player:u32,theatre:string,city:u32` | Launches from an owned city onto the entry of an unlocked theatre. Requires an available expedition action and no active expedition on that board. |
+| `theatre.move` | `player:u32,theatre:string,tile:u32` | Moves the active expedition one edge on the named board, revealing the destination and its neighbors. Launch, movement and recall share one action per seat, theatre and round. |
+| `theatre.recall` | `player:u32,theatre:string` | Recalls the expedition at its entry, preserving the seat's chart. The LAN campaign checks the outbound journey, return and recall against reloads and replay. |
 | `turn.end` | `player:u32` | Requires an existing player who has not ended this turn. Emits `TurnEnded` until every seat ends, then advances the checked counter and resets all units. Binary decoder, repeated-end, and multi-seat event tests cover the command. |
 | `unit.attack` | `player:u32,attacker:u32,defender:u32` | Requires owned military units within range and resolves deterministic damage. Combat tests cover damage and events. |
 | `unit.capture_city` | `player:u32,unit:u32,city:u32` | An owned melee unit with movement captures an adjacent enemy city after the city owner's perimeter defenders have been cleared. Conquest tests cover rejection, victory, save/load and replay. |

@@ -180,6 +180,7 @@ impl SimulationState {
                     .map(|(slot, id)| (*slot, id.clone()))
                     .collect(),
             },
+            theatres: self.theatre_observations(seat, progress),
             victory: self.victories.get(&seat).copied(),
             board: self.project_board(&self.visible_tiles(seat)),
         })

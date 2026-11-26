@@ -10,6 +10,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use histeries_ai::{Player, PlayerPlan, ThreeLayerPlayer, plan_seats};
+use histeries_hex::TileId;
+use histeries_rules_core::PlayerId;
+use histeries_sim::{Command as Order, Observation, Session};
 use serde_json::{Value, json};
 
 const DEADLINE: Duration = Duration::from_secs(15);
@@ -251,31 +255,113 @@ fn cli_globe_save_atlas_and_replay_use_the_same_tiles() {
 
 #[derive(Debug, Eq, PartialEq)]
 struct GlobeTrace {
-    rounds: Vec<(u32, histeries_sim::StateHash, [String; 2])>,
+    rounds: Vec<GlobeRound>,
+    expedition_orders: Vec<(u32, Order)>,
     winner: (histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
     accepted: usize,
     terminal_hash: histeries_sim::StateHash,
 }
 
-fn seat_ages(session: &histeries_sim::Session) -> [String; 2] {
-    [1, 2].map(|seat| {
-        session
-            .observe(histeries_rules_core::PlayerId::new(seat))
-            .unwrap()
-            .progress()
-            .age
-            .as_ref()
-            .unwrap()
-            .id
-            .clone()
+#[derive(Debug, Eq, PartialEq, serde::Serialize)]
+struct GlobeRound {
+    turn: u32,
+    hash: String,
+    seat_ages: [String; 2],
+    seat_surveys: [Option<SurveyTrace>; 2],
+}
+
+#[derive(Debug, Eq, PartialEq, serde::Serialize)]
+struct SurveyTrace {
+    expedition: Option<TileId>,
+    visited: Vec<TileId>,
+    charted: Vec<TileId>,
+    visible: Vec<TileId>,
+}
+
+fn globe_round(session: &Session) -> GlobeRound {
+    let views = [1, 2].map(|seat| session.observe(PlayerId::new(seat)).unwrap());
+    GlobeRound {
+        turn: session.turn(),
+        hash: format!("{:016x}", session.state_hash().value()),
+        seat_ages: views
+            .each_ref()
+            .map(|v| v.progress().age.as_ref().unwrap().id.clone()),
+        seat_surveys: views.each_ref().map(|v| {
+            let orbit = v.theatres().iter().find(|board| board.id == "orbit")?;
+            Some(SurveyTrace {
+                expedition: orbit.expedition,
+                visited: orbit
+                    .tiles
+                    .iter()
+                    .filter(|t| t.visited)
+                    .map(|t| t.tile)
+                    .collect(),
+                charted: orbit.tiles.iter().map(|t| t.tile).collect(),
+                visible: orbit
+                    .tiles
+                    .iter()
+                    .filter(|t| t.visible)
+                    .map(|t| t.tile)
+                    .collect(),
+            })
+        }),
+    }
+}
+
+// The LAN player chooses all four expedition orders from its own current chart.
+#[derive(Default)]
+struct SurveyPlayer(ThreeLayerPlayer);
+
+impl Player for SurveyPlayer {
+    fn plan(&mut self, view: &Observation) -> PlayerPlan {
+        let mut plan = self.0.plan(view);
+        if let Some(order) = survey_order(view) {
+            plan.commands.insert(0, order);
+        }
+        plan
+    }
+}
+
+fn survey_order(view: &Observation) -> Option<Order> {
+    let board = view.theatres().iter().find(|board| board.id == "orbit")?;
+    let player = view.seat();
+    let theatre = board.id.clone();
+    if board.can_launch && board.tiles.iter().all(|t| !t.visited) {
+        return Some(Order::TheatreLaunch {
+            player,
+            theatre,
+            city: view.cities()[0].id,
+        });
+    }
+    if !board.can_move {
+        return None;
+    }
+    if board.expedition != Some(board.entry) {
+        return Some(Order::TheatreMove {
+            player,
+            theatre,
+            tile: board.entry,
+        });
+    }
+    if board
+        .tiles
+        .iter()
+        .any(|t| t.visited && t.tile != board.entry)
+    {
+        assert!(board.can_recall);
+        return Some(Order::TheatreRecall { player, theatre });
+    }
+    let entry = board.tiles.iter().find(|t| t.tile == board.entry).unwrap();
+    Some(Order::TheatreMove {
+        player,
+        theatre,
+        tile: entry.neighbors[0],
     })
 }
 
 fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
-    use histeries_ai::{Player, ThreeLayerPlayer, plan_seats};
     use histeries_net::lan::{LanClient, LanError, Refusal};
-    use histeries_rules_core::PlayerId;
-    use histeries_sim::{Command as Order, ReplayLog, Session};
+    use histeries_sim::ReplayLog;
 
     let host = Process::spawn(
         &[
@@ -301,16 +387,19 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
     ];
     let mut reference =
         Session::from_save_bytes(&peers[0].replica().session().save_bytes()).unwrap();
-    let mut planners = [ThreeLayerPlayer::default(), ThreeLayerPlayer::default()];
+    let mut surface = ThreeLayerPlayer::default();
+    let mut survey = SurveyPlayer::default();
     let mut boundaries = Vec::new();
+    let mut expedition_orders = Vec::new();
     let mut reconnected = false;
     while reference.winner().is_none() {
         let round = reference.turn();
         assert!(round < 500, "globe game failed to finish");
         // Both seats plan from their own view of the same round boundary.
+        let planners: [&mut (dyn Player + Send); 2] = [&mut surface, &mut survey];
         let mut inputs: Vec<_> = peers
             .iter()
-            .zip(&mut planners)
+            .zip(planners)
             .map(|(peer, planner)| {
                 assert_eq!(
                     peer.replica().position().hash,
@@ -318,7 +407,7 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
                 );
                 let visible = peer.replica().session().observe(peer.seat()).unwrap();
                 assert_eq!(visible.board().globe_frequency(), Some(3));
-                (planner as &mut (dyn Player + Send), visible)
+                (planner, visible)
             })
             .collect();
         let plans = plan_seats(&mut inputs, workers);
@@ -332,16 +421,25 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
                 reference.state_hash().value()
             );
             for order in plan.commands {
+                let surface_seat = PlayerId::new(1);
+                let other_view = order
+                    .id()
+                    .starts_with("theatre.")
+                    .then(|| reference.observe(surface_seat).unwrap());
                 match peer.submit(order.clone()) {
                     Ok(()) => {
-                        reference.dispatch(order).unwrap();
+                        reference.dispatch(order.clone()).unwrap();
+                        if let Some(before) = other_view {
+                            expedition_orders.push((round, order));
+                            assert_eq!(reference.observe(surface_seat).unwrap(), before);
+                        }
                         assert_eq!(
                             peer.replica().position().hash,
                             reference.state_hash().value()
                         );
                     }
                     Err(LanError::Refused(Refusal::Rejected(_)))
-                        if !matches!(order, Order::TurnEnd { .. }) =>
+                        if other_view.is_none() && !matches!(order, Order::TurnEnd { .. }) =>
                     {
                         assert!(reference.clone().dispatch(order).is_err());
                     }
@@ -354,17 +452,12 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
         }
         if reference.turn() != round {
             assert_eq!(reference.turn(), round + 1);
-            boundaries.push((
-                reference.turn(),
-                reference.state_hash(),
-                seat_ages(&reference),
-            ));
+            boundaries.push(globe_round(&reference));
         } else {
             assert!(reference.winner().is_some(), "incomplete nonterminal round");
         }
         let loaded = Session::from_save_bytes(&reference.save_bytes()).unwrap();
         assert_eq!(loaded.state_hash(), reference.state_hash());
-        assert_eq!(seat_ages(&loaded), seat_ages(&reference));
         for peer in &mut peers {
             peer.sync().unwrap();
             assert_eq!(
@@ -372,6 +465,12 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
                 reference.state_hash().value()
             );
             assert_eq!(peer.replica().session().winner(), reference.winner());
+            let observed = reference.observe(peer.seat()).unwrap();
+            assert_eq!(loaded.observe(peer.seat()).unwrap(), observed);
+            assert_eq!(
+                peer.replica().session().observe(peer.seat()).unwrap(),
+                observed
+            );
         }
         if !reconnected && reference.turn() >= 5 {
             peers[1] = LanClient::connect(address, PlayerId::new(2), "two".into()).unwrap();
@@ -379,6 +478,23 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
         }
     }
     assert!(reconnected && !boundaries.is_empty());
+    assert_eq!(
+        expedition_orders
+            .iter()
+            .map(|(_, order)| order.id())
+            .collect::<Vec<_>>(),
+        [
+            "theatre.launch",
+            "theatre.move",
+            "theatre.move",
+            "theatre.recall"
+        ]
+    );
+    let terminal = globe_round(&reference);
+    let surveyed = terminal.seat_surveys[1].as_ref().unwrap();
+    assert!(surveyed.expedition.is_none() && surveyed.visible.is_empty());
+    assert_eq!(surveyed.visited.len(), 2);
+    assert!(surveyed.charted.len() > surveyed.visited.len());
     let log = ReplayLog::decode(&reference.replay().encode()).unwrap();
     assert!(log.commands().iter().any(|order| matches!(
         order,
@@ -390,13 +506,14 @@ fn play_geodesic_lan_game(workers: usize) -> GlobeTrace {
         let before = playback.turn();
         playback.dispatch(order.clone()).unwrap();
         if playback.turn() != before {
-            reconstructed.push((playback.turn(), playback.state_hash(), seat_ages(&playback)));
+            reconstructed.push(globe_round(&playback));
         }
     }
     assert_eq!(reconstructed, boundaries);
     assert_eq!(playback.save_bytes(), reference.save_bytes());
     let result = GlobeTrace {
         rounds: boundaries,
+        expedition_orders,
         winner: reference.winner().unwrap(),
         accepted: log.commands().len(),
         terminal_hash: reference.state_hash(),
@@ -417,15 +534,10 @@ fn a_geodesic_lan_game_reaches_victory_and_replays_every_round() {
     assert_eq!(serial, play_geodesic_lan_game(8));
     if let Some(path) = std::env::var_os("HISTERIES_GLOBE_TRACE") {
         let mut trace = std::io::BufWriter::new(std::fs::File::create(path).unwrap());
-        for (turn, hash, ages) in &serial.rounds {
-            writeln!(
-                trace,
-                "{}",
-                json!({"turn":turn,"hash":format!("{:016x}",hash.value()),"seat_ages":ages})
-            )
-            .unwrap();
+        for round in &serial.rounds {
+            writeln!(trace, "{}", serde_json::to_string(round).unwrap()).unwrap();
         }
-        writeln!(trace, "{}", json!({"winner":serial.winner,"accepted":serial.accepted,"hash":format!("{:016x}",serial.terminal_hash.value())})).unwrap();
+        writeln!(trace, "{}", json!({"winner":serial.winner,"accepted":serial.accepted,"hash":format!("{:016x}",serial.terminal_hash.value()),"expedition_orders":serial.expedition_orders})).unwrap();
         trace.flush().unwrap();
     }
 }

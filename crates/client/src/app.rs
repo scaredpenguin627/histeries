@@ -38,7 +38,7 @@ impl FileAction {
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Screen {
     Editor {
         globe: bool,
@@ -47,6 +47,12 @@ pub(crate) enum Screen {
         turn: u32,
         three_d: bool,
         globe: bool,
+    },
+    Theatre {
+        name: String,
+        turn: u32,
+        expedition: Option<histeries_hex::TileId>,
+        visited: usize,
     },
     Handoff(histeries_rules_core::PlayerId),
     Result(histeries_rules_core::PlayerId, histeries_sim::VictoryKind),
@@ -106,6 +112,13 @@ impl GameApp {
             && let Some((winner, kind)) = active.winner()
         {
             Screen::Result(winner, kind)
+        } else if let Some(chart) = presenter.active_theatre(active.observation()) {
+            Screen::Theatre {
+                name: chart.name.clone(),
+                turn: active.observation().turn(),
+                expedition: chart.expedition,
+                visited: chart.tiles.iter().filter(|tile| tile.visited).count(),
+            }
         } else {
             Screen::Map {
                 turn: active.observation().turn(),

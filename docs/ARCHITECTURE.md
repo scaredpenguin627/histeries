@@ -65,7 +65,7 @@ The first topology implementation uses stable row-major `TileId` values and keep
 
 ## Save and replay format
 
-State and replay writers use version 5. Readers accept version 4 and preserve its replay rules. Command documents retain version 3 with additional tags for capture and production enqueue. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected.
+State and replay writers use version 5 for games without expedition activity and version 6 when expedition records are needed. Readers also accept version 4 and preserve its replay rules. Expedition orders use command version 4. Existing orders retain version 3. Integers are little-endian, maps are serialized in stable key order, lengths are bounded, and trailing bytes are rejected. [Off-map theatres](adr/0027-off-map-theatres.md)
 
 ## Map generation
 

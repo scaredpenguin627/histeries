@@ -182,6 +182,19 @@ fn visible_targets(view: &Observation, command: &Command) -> bool {
         Command::CityEnqueueProduction { city: id, .. }
         | Command::CitySetProduction { city: id, .. }
         | Command::CityBuildBuilding { city: id, .. } => city(*id),
+        Command::TheatreLaunch {
+            city: id, theatre, ..
+        } => city(*id) && view.theatres().iter().any(|board| board.id == *theatre),
+        Command::TheatreMove {
+            theatre,
+            tile: site,
+            ..
+        } => view.theatres().iter().any(|board| {
+            board.id == *theatre && board.tiles.iter().any(|t| t.tile == *site && t.visible)
+        }),
+        Command::TheatreRecall { theatre, .. } => {
+            view.theatres().iter().any(|board| board.id == *theatre)
+        }
         Command::ResearchCivic { .. }
         | Command::ResearchTechnology { .. }
         | Command::PolicyAdopt { .. }
