@@ -4,7 +4,17 @@ The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-1
 
 ## Phase 5 — Orbital Survey
 
-In the two-seat, seed-7 LAN campaign, seat 2 launched from city 1 on round 38, surveyed site 1 on round 39, returned to the entry on round 40 and recalled on round 41. The campaign finished with a science victory in 42 rounds and 499 accepted orders. The one- and eight-worker traces agreed on the terminal hash `7610db1ad688a1f3` and on each seat's projected chart at every boundary. [Campaign report](sessions/2026-11-27-off-map-theatres.md)
+GitHub Actions tested implementation `ad38fde9b131` on [PR #17](https://github.com/scaredpenguin627/histeries/pull/17). Each native runner compared AI planning worker limits of 1 and 8. With two seats, the second setting schedules two parallel planning tasks. The three emitted traces of round hashes, seat ages, chart history and expedition orders matched byte for byte (SHA-256 `d9db977233e9e5689e62b58985eb2f2efb6c788cc245a0fab44bd3e7d92e870d`).
+
+| Runner | Fast gate | Trace |
+| --- | ---: | --- |
+| Linux x86_64 | 151.408 s | [Linux artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45895902785/artifacts/15153319989) |
+| macOS arm64 | 248.009 s | [macOS artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45895902785/artifacts/15154935553) |
+| Windows x86_64 MSVC | 307.949 s | [Windows artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45895902785/artifacts/15154577362) |
+
+Linux Chrome and the native client wrote identical 1,361-byte expedition saves (SHA-256 `6f036c0959d7d2d4f0a084de6a31365186d76a55d5b302a796c61e2628950eba`). The browser reopened the chart at site 1 with two visited sites on round 293. [Browser capture and save](https://github.com/scaredpenguin627/histeries/actions/runs/45895902785/artifacts/15154345283) · [Native reference and byte comparison](https://github.com/scaredpenguin627/histeries/actions/runs/45895902785/artifacts/15154921396)
+
+In the two-seat, seed-7 LAN campaign, seat 2 launched from city 1 on round 38, surveyed site 1 on round 39, returned to the entry on round 40 and recalled on round 41. The campaign finished with a science victory in 42 rounds and 499 accepted orders. Both worker limits produced the same terminal hash `7610db1ad688a1f3` and the same projected chart for each seat at every boundary. [Campaign report](sessions/2026-11-27-off-map-theatres.md)
 
 The separate playable opening reaches Orbital Survey through 292 rounds of ordinary research. It is used by the native and browser save comparison. [Reproduce the opening](../README.md)
 
