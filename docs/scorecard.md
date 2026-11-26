@@ -2,6 +2,10 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 5 — Geodesic topology
+
+The topology suite measured 12 pentagons at each of five frequencies (1, 2, 3, 8 and 32). At frequency 32 it counted 10,242 cells, 30,720 edges and 20,480 shared corners. At four frequencies it compared 11,528 ordered endpoint pairs against independent breadth-first searches. The fast workflow repeats these checks per platform and uploads the counts as `geodesic.txt`. [Geodesic acceptance report](sessions/2026-11-26-geodesic-topology.md)
+
 ## Phase 5 — 3D client
 
 GitHub Actions tested the 3D client from `8dd08a5b6bc6` on PR #13. On Linux, Chrome 158 with SwiftShader rendered a 1,200 × 657 browser frame. Switching from 2D to 3D changed 39.500% of 16,000 map-area samples. Orbiting the camera changed 39.525% at the same turn. The player then advanced a turn in 3D, returned to 2D and saved. [Web captures, renderer identity and measurements](https://github.com/scaredpenguin627/histeries/actions/runs/45834082778/artifacts/15124077173) · [3D client session report](sessions/2026-11-26-phase5-3d-client.md)

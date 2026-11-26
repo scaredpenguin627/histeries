@@ -33,6 +33,11 @@ jobs:
       - name: Fast gate
         timeout-minutes: 15
         run: cargo xtask ci-fast
+      - name: Measure spherical topology and route invariants
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked -p histeries-hex --test geodesic -- --nocapture --test-threads=1 | tee target/gates/geodesic.txt
       - name: Record the Linux fast-gate processor count
         if: runner.os == 'Linux'
         run: nproc > target/gates/logical-cpus.txt
@@ -59,6 +64,7 @@ jobs:
           path: |
             target/gates/fast.jsonl
             target/gates/ci-fast.json
+            target/gates/geodesic.txt
             target/gates/logical-cpus.txt
             target/gates/parity.json
             target/gates/client.png
