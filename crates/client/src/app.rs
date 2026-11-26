@@ -12,9 +12,7 @@ use crate::{
 enum FileAction {
     New,
     FromGame,
-    #[cfg(not(target_arch = "wasm32"))]
     Open,
-    #[cfg(not(target_arch = "wasm32"))]
     Save,
 }
 
@@ -24,13 +22,9 @@ impl FileAction {
             Self::New if editing => "New blank scenario",
             Self::New => "New game",
             Self::FromGame => "Copy current game into editor",
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Open if editing => "Open scenario",
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Open => "Open game",
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Save if editing => "Save scenario",
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Save => "Save game",
         }
     }
@@ -55,6 +49,23 @@ pub struct GameApp {
 }
 
 impl GameApp {
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn file_error(&self) -> &str {
+        &self.error
+    }
+
+    #[cfg(any(test, target_arch = "wasm32"))]
+    pub(crate) fn displayed_game_turn(&self) -> Option<u32> {
+        if self.editing {
+            return None;
+        }
+        let active = self
+            .playtest
+            .as_ref()
+            .map_or(&self.game, |(trial, _)| trial);
+        Some(active.observation().turn())
+    }
+
     /// Presents an existing session and initializes the client font atlas.
     pub fn new(cc: &eframe::CreationContext<'_>, game: ClientSession) -> Self {
         font::install(&cc.egui_ctx);
@@ -116,6 +127,18 @@ impl GameApp {
     fn execute(&mut self, action: FileAction) -> Result<(), String> {
         if self.editing {
             let editor = match action {
+                #[cfg(target_arch = "wasm32")]
+                FileAction::Open => Editor::open(
+                    crate::web_storage::read(crate::web_storage::SCENARIO)?,
+                    "Saved browser scenario".to_owned(),
+                )?,
+                #[cfg(target_arch = "wasm32")]
+                FileAction::Save => {
+                    let draft = self.editor.as_mut().ok_or("No scenario is open.")?;
+                    crate::web_storage::write(crate::web_storage::SCENARIO, draft.bytes())?;
+                    draft.set_source("Saved browser scenario".into());
+                    return Ok(());
+                }
                 FileAction::New => {
                     Editor::blank(self.dimensions[0], self.dimensions[1], self.dimensions[2])?
                 }
@@ -141,6 +164,17 @@ impl GameApp {
         }
         let game = match action {
             FileAction::FromGame => return Err("Open the scenario editor first.".into()),
+            #[cfg(target_arch = "wasm32")]
+            FileAction::Open => ClientSession::from_save_bytes(&crate::web_storage::read(
+                crate::web_storage::GAME,
+            )?)?,
+            #[cfg(target_arch = "wasm32")]
+            FileAction::Save => {
+                return crate::web_storage::write(
+                    crate::web_storage::GAME,
+                    &self.game.save_bytes(),
+                );
+            }
             FileAction::New => {
                 let seed = self
                     .seed
@@ -166,10 +200,7 @@ impl GameApp {
     fn file_dialog(&mut self, ctx: &egui::Context, action: FileAction) {
         egui::Modal::new(egui::Id::unique("session-file")).show(ctx, |ui| {
             ui.heading(action.title(self.editing));
-            #[cfg(not(target_arch = "wasm32"))]
             let replaces_session = action != FileAction::Save;
-            #[cfg(target_arch = "wasm32")]
-            let replaces_session = true;
             if replaces_session && self.editor.is_some() {
                 ui.label(if self.editing {
                     REPLACE_SCENARIO
@@ -180,6 +211,15 @@ impl GameApp {
             #[cfg(not(target_arch = "wasm32"))]
             let mut replacing_file = false;
             match action {
+                #[cfg(target_arch = "wasm32")]
+                FileAction::Open | FileAction::Save => {
+                    let slot = if self.editing { "scenario" } else { "game" };
+                    if action == FileAction::Save {
+                        ui.label(format!("Replaces this site's {slot} slot."));
+                    } else {
+                        ui.label(format!("Read this site's {slot} slot."));
+                    }
+                }
                 FileAction::New if self.editing => {
                     for (index, label) in ["Width", "Height", "Players"].into_iter().enumerate() {
                         ui.horizontal(|ui| {
@@ -218,11 +258,9 @@ impl GameApp {
                     FileAction::New if self.editing => "Create blank map",
                     FileAction::New => "Start game",
                     FileAction::FromGame => "Replace with game snapshot",
-                    #[cfg(not(target_arch = "wasm32"))]
                     FileAction::Open => "Open",
                     #[cfg(not(target_arch = "wasm32"))]
                     FileAction::Save if replacing_file => "Replace save",
-                    #[cfg(not(target_arch = "wasm32"))]
                     FileAction::Save => "Save",
                 };
                 if ui.button(label).clicked() {
@@ -277,13 +315,7 @@ impl eframe::App for GameApp {
                         }
                         return;
                     }
-                    for action in [
-                        FileAction::New,
-                        #[cfg(not(target_arch = "wasm32"))]
-                        FileAction::Open,
-                        #[cfg(not(target_arch = "wasm32"))]
-                        FileAction::Save,
-                    ] {
+                    for action in [FileAction::New, FileAction::Open, FileAction::Save] {
                         if ui.button(action.title(editing)).clicked() {
                             file = Some(action);
                             ui.close();
@@ -384,14 +416,21 @@ mod tests {
         trial.end_turn().unwrap();
         assert_ne!(trial.save_bytes(), live);
         assert_ne!(trial.save_bytes(), draft);
+        let trial_turn = trial.observation().turn();
+        assert_eq!(app.displayed_game_turn(), Some(trial_turn));
         app.open_editor().unwrap();
         assert!(app.editing && app.playtest.is_none());
+        assert_eq!(app.displayed_game_turn(), None);
         assert_eq!(app.editor.as_ref().unwrap().bytes(), draft);
         app.dialog = Some(FileAction::New);
         app.error = "previous dialog error".into();
         app.return_to_game();
         assert!(app.dialog.is_none() && app.error.is_empty());
         assert_eq!(app.game.save_bytes(), live);
+        assert_eq!(
+            app.displayed_game_turn(),
+            Some(app.game.observation().turn())
+        );
         assert!(!app.editing && app.playtest.is_none());
 
         app.open_editor().unwrap();

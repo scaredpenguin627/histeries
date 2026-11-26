@@ -33,6 +33,9 @@ jobs:
       - name: Fast gate
         timeout-minutes: 15
         run: cargo xtask ci-fast
+      - name: Record the Linux fast-gate processor count
+        if: runner.os == 'Linux'
+        run: nproc > target/gates/logical-cpus.txt
       - name: Capture the native client with Mesa Vulkan
         if: runner.os == 'Linux'
         run: |
@@ -48,6 +51,7 @@ jobs:
           path: |
             target/gates/fast.jsonl
             target/gates/ci-fast.json
+            target/gates/logical-cpus.txt
             target/gates/parity.json
             target/gates/client.png
       - name: Measure paired games against greedy
@@ -73,13 +77,116 @@ jobs:
             phase2-v1-tournament.txt
           if-no-files-found: ignore
 
-  compare-hashes:
-    needs: fast
+  web:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Start Web job clock
+        run: echo "WEB_STARTED_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+          targets: wasm32-unknown-unknown
+      - name: Install pinned WebAssembly bindings generator
+        shell: bash
+        run: |
+          curl --fail --max-time 120 --location --retry 3 -o "$RUNNER_TEMP/bindgen.tgz" https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.130/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl.tar.gz
+          echo "9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f  $RUNNER_TEMP/bindgen.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/bindgen.tgz" -C "$RUNNER_TEMP" wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm-bindgen
+          echo "WASM_BINDGEN=$RUNNER_TEMP/wasm-bindgen-0.2.130-x86_64-unknown-linux-musl/wasm-bindgen" >> "$GITHUB_ENV"
+      - name: Install screenshot verification tool
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends imagemagick
+      - run: cargo xtask web-build
+      - name: Play, save and reopen a browser turn through WebGPU
+        run: bash scripts/test-web.sh target/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: histeries-web
+          path: target/web/
+      - name: Measure the published release and Web elapsed time
+        run: |
+          elapsed_ms=$(( $(date +%s%3N) - WEB_STARTED_MS ))
+          wasm_bytes=$(stat --format=%s target/web/pkg/histeries_client_bg.wasm)
+          jq -n --argjson elapsed "$elapsed_ms" --argjson bytes "$wasm_bytes" \
+            '{elapsed_ms: $elapsed, wasm_bytes: $bytes}' > target/gates/web-measurements.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-test
+          path: |
+            target/gates/web*.png
+            target/gates/chromedriver.log
+            target/gates/web-server.log
+            target/gates/browser-observed/
+            target/gates/browser-runtime.json
+            target/gates/web-measurements.json
+
+  compare-hashes:
+    needs: [fast, web]
+    runs-on: ubuntu-latest
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
+      - name: Reuse the Linux fast job's Cargo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git/db
+            target/debug
+          key: cargo-fast-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - uses: actions/download-artifact@v4
         with:
           pattern: fast-*
           path: traces
       - run: cargo xtask compare-fast traces/fast-Linux/fast.jsonl traces/fast-macOS/fast.jsonl traces/fast-Windows/fast.jsonl
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-test
+          path: traces/web-test
+      - name: Generate native reference saves for browser parity
+        run: cargo run --locked -p histeries-client --example browser_reference -- target/gates/browser-reference
+      - name: Compare browser and native game and editor saves byte for byte
+        run: |
+          report=target/gates/browser-parity.md
+          failed=0
+          {
+            echo "## Hosted fast and Web gates"
+            printf '[Workflow run, attempt %s](%s/%s/actions/runs/%s/attempts/%s)\n\n' \
+              "$GITHUB_RUN_ATTEMPT" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            echo '| Runner | ci-fast wall time (ms) |'
+            echo '| --- | ---: |'
+            for os in Linux macOS Windows; do
+              ms=$(jq -er 'select(.passed == true) | .wall_ms | numbers' "traces/fast-$os/ci-fast.json")
+              printf '| %s | %s |\n' "$os" "$ms"
+            done
+            echo
+            printf 'The Linux fast gate had %s logical CPUs available.\n' "$(cat traces/fast-Linux/logical-cpus.txt)"
+            jq -r '"Web took \(.elapsed_ms) ms from its first step through release upload. The release WebAssembly was \(.wasm_bytes) bytes."' \
+              traces/web-test/web-measurements.json
+            jq -r '"Chrome \(.version) on \(.platform) used \(.adapter.vendor) \(.adapter.architecture)."' \
+              traces/web-test/browser-runtime.json
+            printf '\n| Save | Byte comparison |\n| --- | --- |\n'
+            for save in turn-1 before-woodland after-woodland; do
+              if cmp "target/gates/browser-reference/$save.hst" "traces/web-test/browser-observed/$save.hst" >&2; then
+                result=Identical
+              else
+                result=Failed
+                failed=1
+              fi
+              printf '| %s | %s |\n' "$save" "$result"
+            done
+          } > "$report"
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          exit "$failed"
+      - name: Attach the parity report and native saves
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-parity
+          path: |
+            target/gates/browser-parity.md
+            target/gates/browser-reference/

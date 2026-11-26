@@ -14,6 +14,18 @@ The hosted fast gate on editor source `9e3ed6cd5c16` passed with restored Cargo 
 
 The implementation commit immediately before this measurement has Git tree `a6ea81f80693224d205588e3cb4d55f519f9d64e`. On Windows GNU it passed the warm fast gate in 59.101 seconds. All 175 workspace tests and 34 parity checks passed, with 1,200 matching round hashes across six fixtures. Thirteen ABI tests also passed on wasm32. Coverage included CLI and MCP package invocation, four native manager tests and single-step undo and redo of a two-command package. An earlier concurrent native test rebuild exceeded the 900-second local budget at 2,576.511 seconds. [Editor package report](sessions/2026-11-19-phase3-extensions.md)
 
+### P3-04 browser client
+
+GitHub Actions measured revision `5b9e4bd2dc3e` in PR #11. All 176 workspace tests and 34 parity checks passed. Six games produced 1,200 matching per-round hashes across the three hosted platforms. Each runner recorded the elapsed time of `cargo xtask ci-fast` against the 900-second budget. [Hosted gate report](https://github.com/scaredpenguin627/histeries/actions/runs/45777597028/job/139772278887)
+
+| Hosted fast gate | Elapsed |
+| --- | ---: |
+| Linux (4 logical CPUs) | 162.758 s |
+| macOS | 250.886 s |
+| Windows MSVC | 286.683 s |
+
+The Linux Web job took 183 seconds against its 30-minute timeout. The interval from the first step through release upload was 177.052 seconds. Chrome and ChromeDriver 157.0.8103.78 used Google SwiftShader. The release Wasm module was 9,825,595 bytes, and the site archive was 2,727,896 bytes. The turn-1 game and the scenario saves from before and after applying Woodland each matched their native reference byte for byte. [Web job](https://github.com/scaredpenguin627/histeries/actions/runs/45777597028/job/139764942246) · [Downloadable measurements and parity evidence](https://github.com/scaredpenguin627/histeries/actions/runs/45777597028/artifacts/15097821730)
+
 ## Phase 2 measurements · 2026-11-19
 
 Three-seat stdio planning matched the expected unit positions and hit points on live advancement, save/resume and replay. [Regression results](sessions/2026-11-19-stdio-bot-snapshot.md)
