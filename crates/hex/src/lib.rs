@@ -7,6 +7,9 @@
 
 use std::fmt;
 
+mod geodesic;
+pub use geodesic::{Geodesic, SphereCell};
+
 /// A stable tile identifier within a topology.
 #[derive(
     Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize,
@@ -34,7 +37,7 @@ pub struct Embedding {
     pub y: i32,
 }
 
-/// Errors returned while constructing a flat topology.
+/// Errors returned while constructing a topology.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TopologyError {
     /// A dimension was zero.

@@ -1,0 +1,6 @@
+# Geodesic boards
+
+- **designed** — Subdivide each of the twenty faces of an icosahedron into a triangular lattice of frequency `f`, between 1 and 32 inclusive. A vertex of the joined lattice identifies one playable cell on the dual surface. The result has `10f² + 2` cells. Twelve have five edges and all the others have six.
+- **designed** — Tile IDs are contiguous and deterministic. The twelve original vertices come first. Further IDs follow the first encounter of each vertex in a fixed face and lattice traversal. Every edge has one reciprocal edge and every dual corner is shared by three cells. A cell's first cyclic neighbor has the smallest neighbor ID. The general graph API returns neighbors in ascending ID order.
+- **designed** — Integer sphere centers and corners use a radius of 1,000,000 display units. The ordered corners describe the tile footprint. Edge slot `i` lies between corners `i` and `(i+1) mod degree`. All geometry belongs to the topology crate.
+- **designed** — Distance is the shortest number of graph steps. A route and its reverse follow the same tiles. A line of sight follows that deterministic route. Rings and areas contain each qualifying tile once, sorted by ID. These rules apply across original face boundaries and around pentagons.

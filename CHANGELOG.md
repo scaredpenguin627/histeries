@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added a deterministic geodesic board to the topology library, with stable tile IDs, shared pentagonal and hexagonal footprints, and shortest routes across the entire sphere.
+
 - Added a playable 3D map on desktop and WebGPU with terrain relief, city and unit pieces, an orbit camera, and depth-aware selection. Players can switch views during a match.
 
 - Added 2–8 player hotseat and LAN play with private handoffs, independent command replay, per-command hash verification and desync diagnostics. Native graphical and terminal clients can join the same LAN host.
