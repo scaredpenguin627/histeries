@@ -17,10 +17,22 @@
 <script type="module">
   const canvas = document.getElementById("game");
   const status = document.getElementById("status");
+  const query = new URLSearchParams(location.search);
+  function integerParam(name, fallback, min, max) {
+    if (!query.has(name)) return fallback;
+    const values = query.getAll(name);
+    if (values.length === 1 && /^[0-9]+$/.test(values[0])) {
+      const value = BigInt(values[0]);
+      if (value >= min && value <= max) return value;
+    }
+    throw new RangeError(`Use one ${name} integer from ${min} to ${max}.`);
+  }
   try {
+    const seed = integerParam("seed", 7n, 0n, (1n << 64n) - 1n);
+    const globe = integerParam("globe", undefined, 1n, 32n);
     const { default: init, start_game } = await import("./pkg/histeries_client.js");
     await init();
-    const handle = await start_game(canvas, 7n);
+    const handle = await start_game(canvas, seed, globe === undefined ? undefined : Number(globe));
     status.hidden = true;
     canvas.focus();
     const monitor = window.setInterval(() => {
@@ -37,7 +49,8 @@
     });
   } catch (error) {
     status.setAttribute("role", "alert");
-    status.textContent = "Histeries could not start. Open this page in a WebGPU-capable browser over HTTPS or localhost.\n\n" + String(error);
+    status.textContent = error instanceof RangeError ? error.message
+      : "Histeries could not start. Open this page in a WebGPU-capable browser over HTTPS or localhost.\n\n" + String(error);
   }
 </script>
 </body>

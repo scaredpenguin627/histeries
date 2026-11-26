@@ -19,6 +19,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     game.end_turn()?;
     fs::write(directory.join("turn-1.hst"), game.save_bytes())?;
 
+    let mut globe = ClientSession::globe(7, 3)?;
+    globe.end_turn()?;
+    fs::write(directory.join("globe-turn-1.hst"), globe.save_bytes())?;
+
     let session = Session::from_save_bytes(&original)?;
     let seat = session.seat_ids().next().ok_or("expected a player")?;
     let mut host = MatchHost::new(session);

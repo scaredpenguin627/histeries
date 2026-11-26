@@ -9,6 +9,7 @@ use std::time::Duration;
 pub(super) struct LanApp {
     game: LanGame,
     presenter: Presenter,
+    received_board: bool,
     submission_error: Option<String>,
 }
 
@@ -17,6 +18,7 @@ impl LanApp {
         Self {
             game,
             presenter: Presenter::new(three_d),
+            received_board: false,
             submission_error: None,
         }
     }
@@ -67,6 +69,10 @@ impl eframe::App for LanApp {
             });
         });
         if let Some(observation) = self.game.observation() {
+            if !self.received_board {
+                self.presenter.three_d |= observation.board().globe_frequency().is_some();
+                self.received_board = true;
+            }
             let board = BoardView {
                 observation,
                 winner: self.game.winner(),

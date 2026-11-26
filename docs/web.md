@@ -8,6 +8,8 @@ cargo xtask web-build
 
 For a local preview, run `cargo xtask web-serve` and open `http://127.0.0.1:8080` in a WebGPU-capable browser. To preview a downloaded and extracted bundle, pass its directory and an optional port to `cargo xtask web-serve`. Use the same hostname and port to reopen a save later.
 
+The default address starts a flat two-player game with seed 7. Append `?globe=3&seed=7` to share a geodesic start matching `histeries-client --globe 3 --seed 7`. Globe frequency accepts 1 through 32. The optional seed is an unsigned 64-bit integer. The **Globe** option in **New game**, **New hotseat game** and **New blank scenario** also lets you choose the frequency.
+
 `cargo xtask web-build` builds the release Rust client and emits a static site in the Cargo target directory under `web/`. Serve that directory over HTTPS or localhost with the `.wasm` files served as `application/wasm`. It can be deployed on any static host. PR builds attach the complete site as the `histeries-web` artifact. The checked-in HTML loads the generated bindings directly and displays startup errors.
 
 The browser uses the same seat, map presenter, commands and opponent scheduler as the native client. A WebGPU-capable browser and adapter are required. Use **Game → Save game** to store the current world. On a later visit, use **Game → Open game** to resume. **Scenario → Save scenario** and **Open scenario** use a separate slot for the editor draft. Clearing the site's data removes both slots. The scenario mod manager can import a manifest and its plugin through the browser file picker.

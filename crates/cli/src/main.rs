@@ -20,11 +20,11 @@ mod tournament;
 
 use std::{env, fs};
 
-use histeries_hex::{FlatHex, TileId};
+use histeries_hex::{FlatHex, TileId, TileTopology};
 use histeries_rules_core::PlayerId;
 use histeries_sim::{
-    Command, Feature, MapState, ResourceKind, RiverDirection, Session, SimulationState, Terrain,
-    generate_map,
+    BoardTopology, Command, Feature, MapState, ResourceKind, RiverDirection, Session,
+    SimulationState, Terrain, generate_map,
 };
 
 fn main() {
@@ -84,7 +84,11 @@ fn command_mcp(args: &[String]) -> Result<(), String> {
         let seat = flag_u32(args, "--seat")?.ok_or("--seat ID is required")?;
         return histeries_mcp::connect(address, PlayerId::new(seat));
     }
-    validate_flags(args, &["--players", "--seed", "--listen", "--state"], 0)?;
+    validate_flags(
+        args,
+        &["--players", "--seed", "--listen", "--state", "--globe"],
+        0,
+    )?;
     let listen = flag_string(args, "--listen")?
         .map(|s| {
             s.parse()
@@ -106,14 +110,23 @@ fn interactive_session(
         if flag_string(args, "--players")?.is_some() || flag_string(args, "--seed")?.is_some() {
             return Err("--state supplies the seats and map; omit --players and --seed".into());
         }
+        if flag_string(args, "--globe")?.is_some() {
+            return Err("--state supplies the topology; omit --globe".into());
+        }
         let bytes = fs::read(&path).map_err(|error| format!("read {path}: {error}"))?;
         Session::from_save_bytes(&bytes).map_err(|error| format!("decode {path}: {error}"))
     } else {
-        new_session(
-            flag_u64(args, "--seed")?.unwrap_or(0),
-            flag_u32(args, "--players")?.unwrap_or(2),
-        )
+        let seed = flag_u64(args, "--seed")?.unwrap_or(0);
+        let players = flag_u32(args, "--players")?.unwrap_or(2);
+        match flag_u32(args, "--globe")? {
+            Some(frequency) => histeries_sim::seeded_frontier_on(seed, players, globe(frequency)?),
+            None => new_session(seed, players),
+        }
     }
+}
+
+fn globe(frequency: u32) -> Result<BoardTopology, String> {
+    BoardTopology::geodesic(frequency).map_err(|e| format!("--globe: {e}"))
 }
 
 fn command_new(args: &[String]) -> Result<(), String> {
@@ -125,6 +138,7 @@ fn command_new(args: &[String]) -> Result<(), String> {
             "--map-ruleset",
             "--setup",
             "--height",
+            "--globe",
             "--seed",
             "--output",
             "--replay-output",
@@ -132,15 +146,24 @@ fn command_new(args: &[String]) -> Result<(), String> {
         0,
     )?;
     let players = flag_u32(args, "--players")?.unwrap_or(2);
-    let width = flag_u32(args, "--width")?.unwrap_or(8);
-    let height = flag_u32(args, "--height")?.unwrap_or(8);
+    let width = flag_u32(args, "--width")?;
+    let height = flag_u32(args, "--height")?;
+    let frequency = flag_u32(args, "--globe")?;
     let seed = flag_u64(args, "--seed")?.unwrap_or(0);
     let output = flag_string(args, "--output")?.unwrap_or_else(|| "state.hst".to_owned());
     let replay_output = flag_string(args, "--replay-output")?;
     if players == 0 || players > 8 {
         return Err("--players must be between 1 and 8".to_owned());
     }
-    let topology = FlatHex::new(width, height, false, false).map_err(|error| error.to_string())?;
+    let topology = match frequency {
+        Some(_) if width.is_some() || height.is_some() => {
+            return Err("a globe uses a subdivision frequency; omit --width and --height".into());
+        }
+        Some(f) => globe(f)?,
+        None => FlatHex::new(width.unwrap_or(8), height.unwrap_or(8), false, false)
+            .map_err(|error| error.to_string())?
+            .into(),
+    };
     let map = match flag_string(args, "--map-ruleset")? {
         Some(path) => {
             let source = fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
@@ -151,7 +174,15 @@ fn command_new(args: &[String]) -> Result<(), String> {
         None => generate_map(topology, seed_bytes(seed)),
     };
     let seats = (1..=players).map(PlayerId::new);
-    let session = match flag_string(args, "--setup")?.as_deref().unwrap_or("empty") {
+    let default_setup = if frequency.is_some() && players >= 2 {
+        "frontier"
+    } else {
+        "empty"
+    };
+    let session = match flag_string(args, "--setup")?
+        .as_deref()
+        .unwrap_or(default_setup)
+    {
         "empty" => Session::with_map(seats, map),
         "frontier" => start::frontier(map, players)?,
         _ => return Err("--setup must be empty or frontier".into()),
@@ -389,7 +420,37 @@ fn read_state(path: &str) -> Result<SimulationState, String> {
 }
 
 fn map_ascii(map: &MapState) -> String {
-    let width = map.topology().width() as usize;
+    let width = match map.topology() {
+        BoardTopology::Flat(flat) => flat.width() as usize,
+        BoardTopology::Geodesic(board) => {
+            use std::collections::{BTreeMap, BTreeSet};
+            let mut columns = BTreeSet::new();
+            let mut rows = BTreeMap::<i32, BTreeMap<i32, char>>::new();
+            for (id, tile) in map.tiles() {
+                let at = board
+                    .embedding(id)
+                    .expect("map tile belongs to its topology");
+                columns.insert(at.x);
+                rows.entry(at.y)
+                    .or_default()
+                    .insert(at.x, terrain_glyph(tile.terrain));
+            }
+            let mut atlas = format!(
+                "Geodesic atlas, frequency {}, {} cells\n",
+                board.frequency(),
+                board.tile_count()
+            );
+            for row in rows.values() {
+                let line: String = columns
+                    .iter()
+                    .map(|x| row.get(x).copied().unwrap_or(' '))
+                    .collect();
+                atlas.push_str(line.trim_end());
+                atlas.push('\n');
+            }
+            return atlas;
+        }
+    };
     let mut output = String::new();
     for (index, (_, tile)) in map.tiles().enumerate() {
         if index > 0 && index % width == 0 {
@@ -545,7 +606,7 @@ fn seed_bytes(seed: u64) -> [u8; 32] {
 }
 
 fn usage() -> String {
-    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|serve|lan|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N] [--height N] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random|v1] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N] [--listen 127.0.0.1:PORT]\n  mcp --connect IP:PORT --seat ID\n  serve (or lan host) [--state PATH | --players N --seed N] [--listen IP:PORT]\n  lan join --connect IP:PORT --seat ID\n  map STATE\n  editor STATE package --package DIRECTORY --player N [--output PATH] [--replay-output PATH]\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
+    "usage: histeries <new|step|run|replay|tournament|selfplay|mcp|serve|lan|map|editor> ...\n  new [--players N] [--setup empty|frontier] [--map-ruleset PATH] [--width N --height N | --globe FREQUENCY] [--seed N] [--output PATH] [--replay-output PATH]\n  step STATE [--player N] [--output PATH] [--replay-output PATH]\n  run STATE [--turns N] [--output PATH] [--replay-output PATH]\n  replay REPLAY\n  tournament [--opponent greedy|random|v1] [--seed N] [--seeds COUNT] [--turns LIMIT] [--workers N]\n  selfplay [--seed N] [--players N] [--workers N] [--turns LIMIT] [--games COUNT] [--size small|large|huge] [--mode game|stress] [--checkpoint-dir PATH [--stop-after-round N]]\n  mcp [--state PATH | --players N --seed N [--globe FREQUENCY]] [--listen 127.0.0.1:PORT]\n  mcp --connect IP:PORT --seat ID\n  serve (or lan host) [--state PATH | --players N --seed N [--globe FREQUENCY]] [--listen IP:PORT]\n  lan join --connect IP:PORT --seat ID\n  map STATE\n  editor STATE package --package DIRECTORY --player N [--output PATH] [--replay-output PATH]\n  scenario-editor STATE apply --commands PATH [--output PATH] [--replay-output PATH]\n  editor STATE ACTION --player N --tile N --value VALUE [--replay-output PATH]".to_owned()
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@
 use std::fmt;
 
 mod geodesic;
-pub use geodesic::{Geodesic, SphereCell};
+pub use geodesic::{AtlasFace, Geodesic, SphereCell};
 
 /// A stable tile identifier within a topology.
 #[derive(

@@ -4,7 +4,7 @@ use eframe::egui::{Vec2, vec2};
 use histeries_rules_core::PlayerId;
 use histeries_sim::{Feature, ResourceKind, Terrain, UnitKind, VisibleTileObservation};
 
-use super::{Material, Point, Projection, Vertex};
+use super::{Material, Point, Projection, Vertex, globe};
 
 pub(super) const BASE: f32 = -0.35;
 pub(super) const HEADROOM: f32 = 1.45;
@@ -70,6 +70,8 @@ pub(super) struct Mesh<'a> {
     projection: &'a Projection,
     vertices: &'a mut Vec<Vertex>,
     center: Point,
+    tangent: Option<globe::Tangent>,
+    radius: f32,
 }
 
 impl<'a> Mesh<'a> {
@@ -83,26 +85,51 @@ impl<'a> Mesh<'a> {
             projection,
             vertices,
             center: [center.x, center.y, height],
+            tangent: None,
+            radius: projection.scale,
+        }
+    }
+
+    pub(super) fn on_globe(
+        projection: &'a Projection,
+        vertices: &'a mut Vec<Vertex>,
+        frame: globe::Tangent,
+        terrain: Terrain,
+    ) -> Self {
+        Self {
+            projection,
+            vertices,
+            center: [0.0, 0.0, (elevation(terrain) + 0.19) * 0.34],
+            tangent: Some(frame),
+            radius: projection.globe.as_ref().unwrap().radius * frame.scale,
         }
     }
 
     fn triangle(&mut self, a: Point, b: Point, c: Point, pigment: Material) {
+        let world = |p: Point| {
+            let p = std::array::from_fn(|i| self.center[i] + p[i]);
+            self.tangent.map_or(p, |frame| frame.world(p))
+        };
+        self.world_triangle(world(a), world(b), world(c), pigment);
+    }
+
+    fn world_triangle(&mut self, a: Point, b: Point, c: Point, pigment: Material) {
         let sub = |p: Point| [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
         let ([x, y, z], [u, v, w]) = (sub(b), sub(c));
         let n = [y * w - z * v, z * u - x * w, x * v - y * u];
         let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-        if length <= f32::EPSILON {
+        if length == 0.0 {
             return;
         }
-        let sun = (-0.40 * n[0] - 0.46 * n[1] + 0.79 * n[2]) / length;
+        let sun = if let Some(globe) = &self.projection.globe {
+            globe.light(n.map(|v| v / length))
+        } else {
+            (-0.40 * n[0] - 0.46 * n[1] + 0.79 * n[2]) / length
+        };
         let shade = 0.68 + 0.32 * sun.max(0.0);
         let color = pigment.map(|v| f32::from(v) * (shade / 255.0));
-        self.vertices.extend([a, b, c].map(|[x, y, z]| Vertex {
-            clip: self.projection.clip([
-                self.center[0] + x,
-                self.center[1] + y,
-                self.center[2] + z,
-            ]),
+        self.vertices.extend([a, b, c].map(|p| Vertex {
+            clip: self.projection.clip(p),
             color,
         }));
     }
@@ -211,7 +238,46 @@ impl<'a> Mesh<'a> {
     }
 
     pub(super) fn land(&mut self, tile: &VisibleTileObservation, selected: bool) {
-        if self.projection.scale < OVERVIEW_RADIUS {
+        if let (Some(frame), Some(cell)) = (self.tangent, &tile.surface) {
+            self.globe_ground(frame, cell, tile, selected);
+            if self.radius < OVERVIEW_RADIUS {
+                if tile.terrain == Terrain::Mountain {
+                    self.solid(
+                        &HEX,
+                        [-0.12, -0.18, 0.0],
+                        Vec2::splat(0.46),
+                        Vec2::ZERO,
+                        0.81,
+                        [155, 157, 143],
+                    );
+                }
+                if tile.road {
+                    self.quad(
+                        [
+                            [-0.54, 0.24, 0.01],
+                            [0.54, 0.14, 0.01],
+                            [0.54, 0.25, 0.01],
+                            [-0.54, 0.35, 0.01],
+                        ],
+                        [147, 110, 77],
+                    );
+                }
+                if let Some(resource) = tile.resource {
+                    self.solid(
+                        &SQUARE,
+                        [0.32, -0.20, 0.01],
+                        Vec2::splat(0.18),
+                        Vec2::ZERO,
+                        0.24,
+                        resource_color(resource),
+                    );
+                }
+            } else {
+                self.details(tile);
+            }
+            return;
+        }
+        if self.radius < OVERVIEW_RADIUS {
             self.overview_land(tile, selected);
             return;
         }
@@ -232,6 +298,57 @@ impl<'a> Mesh<'a> {
             bevel,
             color,
         );
+        self.details(tile);
+        if let Some(edge) = tile.river {
+            self.inset_edge(edge as usize, 0.785, 0.89, 0.014, [85, 170, 192]);
+        }
+        if selected {
+            for edge in 0..6 {
+                self.inset_edge(edge, 0.816, 0.873, 0.025, [254, 207, 91]);
+            }
+        }
+    }
+
+    /// Both incident cells use the exact observed endpoints at the rim. The
+    /// interior plateau provides level ground for figures and infrastructure.
+    fn globe_ground(
+        &mut self,
+        frame: globe::Tangent,
+        cell: &histeries_sim::GlobeCell,
+        tile: &VisibleTileObservation,
+        selected: bool,
+    ) {
+        let top = self.center[2];
+        let center = frame.world([0.0, 0.0, top]);
+        let color = if self.radius < OVERVIEW_RADIUS {
+            match tile.feature {
+                Feature::Forest => [70, 125, 84],
+                Feature::Jungle => [59, 121, 78],
+                Feature::Marsh => [98, 151, 134],
+                Feature::None => pigment(tile.terrain),
+            }
+        } else {
+            pigment(tile.terrain)
+        };
+        for (i, &corner) in cell.corners.iter().enumerate() {
+            let a = globe::position(corner);
+            let b = globe::position(cell.corners[(i + 1) % cell.corners.len()]);
+            let inner_a = frame.plane(a, 0.85, top);
+            let inner_b = frame.plane(b, 0.85, top);
+            let edge_color = if tile.river.is_some_and(|edge| edge as usize == i) {
+                [85, 170, 192]
+            } else if selected {
+                [254, 207, 91]
+            } else {
+                color.map(|v| (u16::from(v) * 90 / 100) as u8)
+            };
+            self.world_triangle(a, b, inner_b, edge_color);
+            self.world_triangle(a, inner_b, inner_a, edge_color);
+            self.world_triangle(center, inner_a, inner_b, color);
+        }
+    }
+
+    fn details(&mut self, tile: &VisibleTileObservation) {
         match tile.terrain {
             Terrain::Mountain => {
                 self.solid(
@@ -355,16 +472,8 @@ impl<'a> Mesh<'a> {
             self.quad([a, c, d, b], [147, 110, 77]);
             self.quad([c, e, f, d], [147, 110, 77]);
         }
-        if let Some(edge) = tile.river {
-            self.inset_edge(edge as usize, 0.785, 0.89, 0.014, [85, 170, 192]);
-        }
         if let Some(resource) = tile.resource {
             self.deposit(resource);
-        }
-        if selected {
-            for edge in 0..6 {
-                self.inset_edge(edge, 0.816, 0.873, 0.025, [254, 207, 91]);
-            }
         }
     }
 
@@ -407,7 +516,7 @@ impl<'a> Mesh<'a> {
     }
 
     pub(super) fn town(&mut self, accent: Material) {
-        if self.projection.scale < OVERVIEW_RADIUS {
+        if self.radius < OVERVIEW_RADIUS {
             self.house(0.0, -0.22, vec2(0.37, 0.29), 0.60, accent);
             return;
         }
@@ -424,7 +533,7 @@ impl<'a> Mesh<'a> {
     }
 
     pub(super) fn district(&mut self, accent: Material) {
-        if self.projection.scale < OVERVIEW_RADIUS {
+        if self.radius < OVERVIEW_RADIUS {
             self.solid(
                 &SQUARE,
                 [0.0, -0.12, 0.0],
@@ -439,7 +548,7 @@ impl<'a> Mesh<'a> {
     }
 
     pub(super) fn unit(&mut self, kind: UnitKind, x: f32, accent: Material) {
-        if self.projection.scale < OVERVIEW_RADIUS {
+        if self.radius < OVERVIEW_RADIUS {
             // Face the pennant towards the camera so it stays legible around the orbit.
             let right = self.projection.axes.right;
             let flag = |along: f32, z| [x + along * right.x, 0.36 + along * right.y, z];

@@ -9,6 +9,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+petgraph = { version = "=0.8.3", default-features = false }
 wasmi = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 serde.workspace = true

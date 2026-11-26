@@ -60,7 +60,7 @@ Phase 1 is complete after 1,000 random-seed self-play games have zero panics, ha
 - [x] P5-01 Add a playable, depth-tested 3D match view to the desktop and WebGPU clients
 - [ ] Add the HarmonyOS NEXT PC shell with supported window and rendering backends
 - [x] P5-02 Implement the deterministic Geodesic graph, surface cells and shortest routes
-- [ ] P5-03 Play geodesic matches with globe picking, save/load, replay and multiplayer
+- [x] P5-03 Play geodesic matches with globe picking, save/load, replay and multiplayer
 - [ ] Add late-game ages and off-map theatres
 
 

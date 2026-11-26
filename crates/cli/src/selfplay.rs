@@ -136,7 +136,7 @@ impl Game {
         let elapsed = start.elapsed();
         let topology = before.map().ok_or("missing self-play map")?.topology();
         for ((_, obs), plan) in inputs.iter().zip(&plans) {
-            self.contact_orders += audit_contact_orders(&topology, obs, &plan.commands)?;
+            self.contact_orders += audit_contact_orders(topology, obs, &plan.commands)?;
         }
         for ((seat, _), mut plan) in self.seats.iter().zip(plans) {
             if stress {

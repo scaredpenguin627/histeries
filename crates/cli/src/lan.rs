@@ -27,7 +27,11 @@ pub(super) fn run(args: &[String]) -> Result<(), String> {
 }
 
 pub(super) fn host(args: &[String]) -> Result<(), String> {
-    validate_flags(args, &["--listen", "--players", "--seed", "--state"], 0)?;
+    validate_flags(
+        args,
+        &["--listen", "--players", "--seed", "--state", "--globe"],
+        0,
+    )?;
     let address = flag_string(args, "--listen")?.unwrap_or_else(|| "127.0.0.1:7878".into());
     let session = interactive_session(args, histeries_sim::seeded_frontier)?;
     let mut tokens = BTreeMap::new();

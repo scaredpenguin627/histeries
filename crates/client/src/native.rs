@@ -13,11 +13,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-const USAGE: &str = "histeries-client [--seed INTEGER | --load GAME.hst] [--hotseat] [--players 2..8 (new hotseat only)] [--3d] [--capture FRAME.png]\n     or: histeries-client --connect IP:PORT --seat ID [--3d] [--capture FRAME.png] (set HISTERIES_LAN_TOKEN)";
+const USAGE: &str = "histeries-client [[--seed INTEGER] [--globe FREQUENCY (1..32)] | --load GAME.hst] [--hotseat] [--players 2..8 (new hotseat only)] [--3d] [--capture FRAME.png]\n     or: histeries-client --connect IP:PORT --seat ID [--3d] [--capture FRAME.png] (set HISTERIES_LAN_TOKEN)";
 
 #[derive(Default)]
 struct Options {
     seed: Option<u64>,
+    globe: Option<u32>,
     load: Option<PathBuf>,
     hotseat: bool,
     three_d: bool,
@@ -50,6 +51,15 @@ impl Options {
                 Some("--load") if options.load.is_none() && options.seed.is_none() => {
                     options.load = Some(value.into());
                 }
+                Some("--globe") if options.globe.is_none() => {
+                    options.globe = Some(
+                        value
+                            .to_str()
+                            .and_then(|s| s.parse().ok())
+                            .filter(|n| (1..=histeries_hex::Geodesic::MAX_FREQUENCY).contains(n))
+                            .ok_or(USAGE)?,
+                    );
+                }
                 Some("--capture") if options.capture.is_none() => {
                     options.capture = Some(value.into())
                 }
@@ -74,7 +84,9 @@ impl Options {
                 _ => return Err(USAGE.into()),
             }
         }
-        if options.players.is_some() && (!options.hotseat || options.load.is_some()) {
+        if options.players.is_some() && (!options.hotseat || options.load.is_some())
+            || options.globe.is_some() && (options.load.is_some() || options.connect.is_some())
+        {
             return Err(USAGE.into());
         }
         if options.connect.is_some() != options.seat.is_some()
@@ -90,10 +102,11 @@ impl Options {
         match (&self.load, self.hotseat) {
             (Some(path), true) => ClientSession::hotseat_from_save(&open_bytes(path)?),
             (Some(path), false) => open(path),
-            (None, true) => {
-                ClientSession::hotseat(self.seed.unwrap_or(7), self.players.unwrap_or(2))
-            }
-            (None, false) => ClientSession::new(self.seed.unwrap_or(7)),
+            (None, _) => ClientSession::start(
+                self.seed.unwrap_or(7),
+                self.hotseat.then_some(self.players.unwrap_or(2)),
+                self.globe,
+            ),
         }
     }
 
@@ -110,7 +123,9 @@ impl Options {
             ))))
         } else {
             let mut app = GameApp::new(cc, self.session()?);
-            app.set_3d(self.three_d);
+            if self.three_d {
+                app.set_3d(true);
+            }
             Ok(DesktopGame::Local(Box::new(app)))
         }
     }
@@ -259,6 +274,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn globe_launch_validates_frequency_and_conflicts_in_either_order() {
+        let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
+        for args in [
+            vec!["--globe"],
+            vec!["--globe", "0"],
+            vec!["--globe", "33"],
+            vec!["--globe", "x"],
+            vec!["--globe", "3", "--globe", "4"],
+            vec!["--globe", "3", "--load", "game.hst"],
+            vec!["--load", "game.hst", "--globe", "3"],
+            vec!["--globe", "3", "--connect", "127.0.0.1:8510", "--seat", "1"],
+        ] {
+            assert!(parse(&args).is_err(), "{args:?}");
+        }
+        for value in ["1", "32"] {
+            assert!(parse(&["--globe", value]).is_ok());
+        }
+        let game = parse(&["--globe", "3", "--seed", "7", "--3d"])
+            .unwrap()
+            .unwrap()
+            .session()
+            .unwrap();
+        assert_eq!(game.observation().board().globe_frequency(), Some(3));
+        assert!(!game.is_hotseat());
+    }
+
+    #[test]
     fn relief_launch_supports_solo_hotseat_lan_and_capture() {
         let parse = |args: &[&str]| {
             Options::parse(args.iter().map(OsString::from))
@@ -307,7 +349,7 @@ mod tests {
     #[test]
     fn hotseat_launch_loads_a_pending_human_without_advancing_the_match() {
         let parse = |args: &[&str]| Options::parse(args.iter().map(OsString::from));
-        let mut game = parse(&["--players", "3", "--hotseat", "--seed", "7"])
+        let mut game = parse(&["--players", "3", "--hotseat", "--seed", "7", "--globe", "3"])
             .unwrap()
             .unwrap()
             .session()
@@ -323,6 +365,7 @@ mod tests {
             .unwrap()
             .session()
             .unwrap();
+        assert_eq!(loaded.observation().board().globe_frequency(), Some(3));
         assert_eq!(
             loaded.handoff_seat(),
             Some(histeries_rules_core::PlayerId::new(2))
