@@ -4,6 +4,8 @@ The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-1
 
 ## Phase 5 — HarmonyOS NEXT PC
 
+GitHub built an unsigned PC HAP from implementation `f039933522e0` using Huawei's Linux SDK. The downloaded 28,764,526-byte package contained the PC entry ability, Ark bytecode, resources, and ARM64 and x86-64 native game libraries. HAP SHA-256: `aba5b9afcf6e186d4e94daa080cf357124ec298b5a13b33bdf3aa0f0ff6d8d91`. [Build run](https://github.com/scaredpenguin627/histeries/actions/runs/45932434021) · [Unsigned HAP artifact](https://github.com/scaredpenguin627/histeries/actions/runs/45932434021/artifacts/15169102349)
+
 The native game renderer type-checked for both `aarch64-unknown-linux-ohos` and `x86_64-unknown-linux-ohos` with the upstream Vulkan surface fix pinned at `8b419de0906f`. The Windows NDK linked both release versions of `libhisteries_board.so`. HDC 3.2.0c enumerated zero targets. PC first-frame receipts: **0**. Device acceptance remains open. [Build and device evidence](sessions/2026-11-27-ohos-client.md)
 
 ## Phase 5 — Orbital Survey
