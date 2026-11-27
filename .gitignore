@@ -1,3 +1,4 @@
 **/target/
 **/.jj/
 *.rs.bk
+/platform/ohos/upstream/

@@ -1,0 +1,13 @@
+# HarmonyOS NEXT PC shell
+
+Bookmark `task/phase5-ohos-client` provides an ArkUI Stage application, XComponent lifecycle handling, the Rust Vulkan renderer and a device capture command. The shell renders the desktop globe mesh from a normal seed-7, two-seat game and advances it through the client session. [ADR-0028](../adr/0028-ohos-surface.md) · [Build and launch](../../platform/ohos/README.md)
+
+On 2026-11-27 the upstream v31 milestone had four closed items and one open item. Its 80% figure describes that release backlog. PR #9908 merged to trunk on 2026-07-24 and contains the Vulkan surface implementation used here. The latest registry release checked was 30.0.2. The pinned upstream source, the window compatibility probe and the actual Histeries renderer type-checked on both OHOS targets. The Rust renderer check completed in 11.08 seconds with a warm cache and Rust 1.100.0. [v31 milestone](https://github.com/gfx-rs/wgpu/milestone/29) · [Upstream change](https://github.com/gfx-rs/wgpu/pull/9908)
+
+The build host verified the publisher's SHA-256 for Huawei Command Line Tools 5.1.0.840 (HarmonyOS SDK 5.1.0.125, API 18) and the Windows OpenHarmony SDK archive. Local ohpm 5.1.3 and Hvigor 5.18.5 reported their versions. Windows HDC 3.2.0c returned an empty target list. The isolated renderer lockfile passed the repository's advisory, license and source checks for each target. All 47 client library tests passed, including the new native window-size and globe mesh regression.
+
+Using the Windows OpenHarmony 6.1.0.47 NDK, CMake and Clang 15.0.4 linked the C++ XComponent callbacks and Rust release renderer into `libhisteries_board.so` for ARM64 and x86-64. The local fast gate passed 256 tests, 34 parity fixtures and 1,200 round hashes in 655.127 seconds.
+
+The maintainer confirmed that no HarmonyOS NEXT PC was available for this run. Signing, installation and presentation on a physical PC, including the adapter log and visible game screenshot, are pending. The Phase 5 roadmap item stays open.
+
+Sol 6.2 (max) independently approved `f039933522e0` for draft submission after the 54.016-second local fast gate. The branch was pushed as `task/phase5-ohos-client`. GitHub's Linux runner packaged and checked the unsigned HAP with both native ABIs. An independent download reproduced its SHA-256 and verified the compiled manifest, Ark bytecode and ELF machine headers. During device acceptance, inspect the visible game board and compare the first submitted frame's logged pixel dimensions with the XComponent framebuffer at that submission. The End turn row occupies a separate part of the window. [Draft PR #18](https://github.com/scaredpenguin627/histeries/pull/18) · [Measured package](../scorecard.md)

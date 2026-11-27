@@ -16,7 +16,7 @@ pub(super) const INK: Color32 = Color32::from_rgb(29, 44, 44);
 pub(super) const PAPER: Color32 = Color32::from_rgb(243, 237, 214);
 pub(super) const GOLD: Color32 = Color32::from_rgb(233, 191, 108);
 const FOG: Color32 = Color32::from_rgb(39, 54, 55);
-const HALF_WIDTH: f32 = 0.866_025_4;
+use crate::geometry::HALF_WIDTH;
 
 pub(super) struct Camera {
     pub(super) center: Vec2,
@@ -38,7 +38,7 @@ impl Default for Camera {
 
 impl Camera {
     pub(super) fn world(point: Embedding) -> Vec2 {
-        vec2(point.x as f32 * HALF_WIDTH, point.y as f32 * 0.5)
+        crate::geometry::world(point)
     }
 
     pub(super) fn project(&self, point: Embedding, viewport: Rect) -> Pos2 {

@@ -2,7 +2,7 @@
 
 use std::f32::consts::{FRAC_PI_2, TAU};
 
-use eframe::egui::{Rect, Vec2, vec2};
+use emath::{Rect, Vec2, vec2};
 use histeries_hex::Geodesic;
 use histeries_sim::GlobeCell;
 

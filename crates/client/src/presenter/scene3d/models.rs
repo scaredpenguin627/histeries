@@ -1,6 +1,6 @@
 //! Faceted models in tile-local display units. Models share a fixed world-space light.
 
-use eframe::egui::{Vec2, vec2};
+use emath::{Vec2, vec2};
 use histeries_rules_core::PlayerId;
 use histeries_sim::{Feature, ResourceKind, Terrain, UnitKind, VisibleTileObservation};
 

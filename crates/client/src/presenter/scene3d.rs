@@ -1,19 +1,22 @@
 //! Orthographic diorama built exclusively from one board observation.
 
 mod globe;
+#[cfg(not(target_env = "ohos"))]
 pub(crate) mod gpu;
 mod models;
-#[cfg(test)]
+#[cfg(not(target_env = "ohos"))]
+mod pipeline;
+#[cfg(all(test, not(target_env = "ohos")))]
 mod tests;
 
 use std::ops::Range;
 
-use eframe::egui::{Pos2, Rect, Vec2, pos2, vec2};
+use emath::{Pos2, Rect, Vec2, pos2, vec2};
 use histeries_hex::TileId;
 use histeries_rules_core::PlayerId;
 use histeries_sim::{BoardObservation, VisibleTileObservation};
 
-use super::{atlas, visible};
+use crate::geometry::{visible, world};
 use models::{Mesh, elevation};
 
 type Point = [f32; 3]; // display x, display y, altitude
@@ -87,10 +90,7 @@ impl Camera3d {
             return;
         }
         let axes = self.axes();
-        let position = axes.screen(
-            atlas::Camera::world(tile.embedding),
-            elevation(tile.terrain),
-        );
+        let position = axes.screen(world(tile.embedding), elevation(tile.terrain));
         self.center = axes.ground_delta(position);
     }
 
@@ -108,7 +108,7 @@ impl Camera3d {
         let axes = self.axes();
         let mut bounds = Rect::NOTHING;
         for tile in view.visible_tiles() {
-            let ground = atlas::Camera::world(tile.embedding);
+            let ground = world(tile.embedding);
             let vertical = |height| axes.screen(ground, height);
             // Every mesh lies inside its unit-radius footprint, from plinth to peak.
             bounds.extend_with(
@@ -151,6 +151,32 @@ impl Camera3d {
             .ground_delta(at * (self.scale.recip() - scale.recip()));
         self.scale = scale;
     }
+}
+
+/// Build the desktop game's depth-tested geometry for an external display surface.
+pub fn surface_vertices(
+    view: &histeries_sim::Observation,
+    width: u32,
+    height: u32,
+) -> Vec<[f32; 6]> {
+    if width == 0 || height == 0 {
+        return Vec::new();
+    }
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(width as f32, height as f32));
+    let mut camera = Camera3d::default();
+    camera.fit(view.board(), rect);
+    if let Some(tile) = crate::geometry::home(view).and_then(|id| visible(view.board(), id)) {
+        camera.focus(tile);
+    }
+    Scene::build(view.board(), view.seat(), &camera, rect, None)
+        .vertices
+        .into_iter()
+        .map(|v| {
+            let [x, y, z] = v.clip;
+            let [r, g, b] = v.color;
+            [x, y, z, r, g, b]
+        })
+        .collect()
 }
 
 struct Projection {
@@ -298,7 +324,7 @@ impl Scene {
             }
             return;
         }
-        let center = atlas::Camera::world(tile.embedding);
+        let center = world(tile.embedding);
         let height = elevation(tile.terrain);
         let bounds = projection.footprint(center, height + models::HEADROOM);
         if self.rect.intersects(bounds) {

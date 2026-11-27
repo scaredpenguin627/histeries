@@ -1,4 +1,5 @@
 [workspace]
+exclude = ["platform/ohos"]
 members = [
     "xtask",
     "crates/hex",

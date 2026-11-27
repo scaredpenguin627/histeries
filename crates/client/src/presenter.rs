@@ -14,9 +14,7 @@ use eframe::egui::{
 };
 use histeries_hex::TileId;
 use histeries_rules_core::{CityId, PlayerId, UnitId};
-use histeries_sim::{
-    BoardObservation, Command, DistrictKind, Observation, VictoryKind, VisibleTileObservation,
-};
+use histeries_sim::{Command, DistrictKind, Observation, VictoryKind, VisibleTileObservation};
 
 use crate::game::ClientSession;
 use atlas::{Camera, GOLD, INK, PAPER};
@@ -563,18 +561,4 @@ fn frame(fill: Color32, horizontal: i8, vertical: i8) -> Frame {
         .stroke(Stroke::new(1.0, INK))
 }
 
-fn home(view: &Observation) -> Option<TileId> {
-    view.cities()
-        .first()
-        .map(|c| c.tile)
-        .or_else(|| view.units().first().map(|u| u.tile))
-        .or_else(|| view.visible_tiles().first().map(|t| t.tile))
-}
-
-fn visible(view: &BoardObservation, id: TileId) -> Option<&VisibleTileObservation> {
-    let tiles = view.visible_tiles();
-    tiles
-        .binary_search_by_key(&id, |tile| tile.tile)
-        .ok()
-        .map(|i| &tiles[i])
-}
+use crate::geometry::{home, visible};

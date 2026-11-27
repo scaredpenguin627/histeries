@@ -4,6 +4,25 @@ use histeries_hex::Embedding;
 use histeries_sim::{Command, Feature, Terrain, UnitKind};
 
 #[test]
+fn native_surface_uses_the_seat_globe_mesh_at_framebuffer_size() {
+    let game = ClientSession::globe(7, 3).unwrap();
+    let view = game.observation();
+    assert!(!view.cities().is_empty() && !view.units().is_empty());
+    assert!(surface_vertices(view, 0, 720).is_empty());
+    let vertices = surface_vertices(view, 1280, 720);
+    assert!(vertices.len() > 3 && vertices.len().is_multiple_of(3));
+    assert!(vertices.iter().flatten().all(|v| v.is_finite()));
+    // Fog lies at depth 1. The initial framebuffer must also contain visible game geometry.
+    assert!(
+        vertices
+            .iter()
+            .any(|v| v[0].abs() < 1.0 && v[1].abs() < 1.0 && (0.0..1.0).contains(&v[2]))
+    );
+    assert!(vertices.windows(2).any(|pair| pair[0][3..] != pair[1][3..]));
+    assert_ne!(vertices, surface_vertices(view, 720, 1280));
+}
+
+#[test]
 fn globe_edges_pick_the_incident_tiles_and_fog_hides_the_rotated_far_side() {
     use histeries_sim::{BoardTopology, ScenarioBrush, ScenarioDraft, Session};
     let topology = BoardTopology::geodesic(4).unwrap();
@@ -243,7 +262,7 @@ fn a_mountain_occludes_the_tile_behind_it_in_either_submission_order() {
     };
     let rect = Rect::from_min_size(Pos2::ZERO, vec2(500.0, 300.0));
     let projection = Projection::new(&camera, rect);
-    let ground = atlas::Camera::world(far.embedding);
+    let ground = world(far.embedding);
     let at = screen(&projection, [ground.x, ground.y, elevation(far.terrain)]);
     let scene_from = |tiles: &[&VisibleTileObservation]| {
         let mut scene = Scene {
