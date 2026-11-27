@@ -1,0 +1,75 @@
+name: HarmonyOS PC HAP
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/ohos-hap.yml"
+      - "platform/ohos/**"
+      - "crates/**"
+      - "data/**"
+      - "assets/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test XComponent surface lifecycle on the host
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -pthread platform/ohos/tests/board_lifecycle.cpp -o "$RUNNER_TEMP/board-lifecycle"
+          "$RUNNER_TEMP/board-lifecycle"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.100.0
+          targets: aarch64-unknown-linux-ohos,x86_64-unknown-linux-ohos
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Audit the locked platform renderer for both targets
+        run: |
+          cmake -P platform/ohos/prepare-wgpu.cmake
+          cargo install --locked cargo-deny@0.20.2
+          for target in aarch64-unknown-linux-ohos x86_64-unknown-linux-ohos; do
+            cargo deny --locked --manifest-path platform/ohos/renderer/Cargo.toml --config deny.toml --target "$target" check
+          done
+      - name: Install Huawei command-line tools 5.1.0.840 and SDK 5.1.0.125
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --location --retry 3 --output harmony-sdk.zip \
+            https://repo.huaweicloud.com/harmonyos/ohpm/5.1.0/commandline-tools-linux-x64-5.1.0.840.zip
+          echo "1dcefa4741dc289277560b2802040e0c45b433898d8db453d711d5376e0478f1  harmony-sdk.zip" | sha256sum --check
+          unzip -q harmony-sdk.zip
+          rm harmony-sdk.zip
+          echo "$RUNNER_TEMP/command-line-tools/bin" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/command-line-tools/tool/node/bin" >> "$GITHUB_PATH"
+          echo "DEVECO_SDK_HOME=$RUNNER_TEMP/command-line-tools/sdk" >> "$GITHUB_ENV"
+      - name: Assemble the PC HAP
+        working-directory: platform/ohos
+        run: |
+          node --version
+          ohpm -v
+          hvigorw -v
+          ohpm install
+          hvigorw --mode module -p product=default -p module=entry@default assembleHap --no-daemon
+      - name: Verify packaged ability, Ark bytecode, resources and native ELF payloads
+        working-directory: platform/ohos
+        run: |
+          bash verify-hap.sh entry/build/default/outputs/default/entry-default-unsigned.hap
+      - uses: actions/upload-artifact@v4
+        with:
+          name: histeries-pc-unsigned-hap
+          path: platform/ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
+          if-no-files-found: error

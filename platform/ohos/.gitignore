@@ -1,0 +1,13 @@
+# Local SDK, signing material and build products
+.idea/
+.hvigor/
+.cxx/
+build/
+node_modules/
+oh_modules/
+local.properties
+*.p12
+*.cer
+*.csr
+*.p7b
+*.hap

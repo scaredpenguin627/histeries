@@ -1,0 +1,18 @@
+[package]
+name = "histeries-ohos"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+histeries-client = { path = "../../../crates/client" }
+pollster = "=1.0.3"
+raw-window-handle = "=0.6.2"
+wgpu = { path = "../upstream/wgpu-8b419de0906f37af69d728f1735132e427a3436f/wgpu", default-features = false, features = ["std", "vulkan", "wgsl"] }

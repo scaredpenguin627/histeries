@@ -4,6 +4,8 @@ All notable changes are recorded here.
 
 ## Unreleased
 
+- Added an experimental ArkUI/XComponent PC shell with Vulkan globe rendering and an End turn control. Physical-device first-frame acceptance is pending.
+
 - Added a playable Orbital Survey chart to an ongoing match. An expedition can launch from a city, survey adjacent sites and return home. Saves and replays retain the survey, and each player's screen shows their own chart.
 
 - Added seat-specific ages with research and civic prerequisites, research carry-over rules and cumulative unlocks. The Realm panel shows the current age and lets players adopt newly available policies.

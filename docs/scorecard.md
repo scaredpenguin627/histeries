@@ -2,6 +2,10 @@
 
 The latest measured results appear first. The [Phase 1 audit](sessions/2026-11-19-phase1-completion.md) maps the requirements to their implementation and tests. [Gate budgets](budgets.md)
 
+## Phase 5 — HarmonyOS NEXT PC
+
+The native game renderer type-checked for both `aarch64-unknown-linux-ohos` and `x86_64-unknown-linux-ohos` with the upstream Vulkan surface fix pinned at `8b419de0906f`. The Windows NDK linked both release versions of `libhisteries_board.so`. HDC 3.2.0c enumerated zero targets. PC first-frame receipts: **0**. Device acceptance remains open. [Build and device evidence](sessions/2026-11-27-ohos-client.md)
+
 ## Phase 5 — Orbital Survey
 
 GitHub Actions tested implementation `ad38fde9b131` on [PR #17](https://github.com/scaredpenguin627/histeries/pull/17). Each native runner compared AI planning worker limits of 1 and 8. With two seats, the second setting schedules two parallel planning tasks. The three emitted traces of round hashes, seat ages, chart history and expedition orders matched byte for byte (SHA-256 `d9db977233e9e5689e62b58985eb2f2efb6c788cc245a0fab44bd3e7d92e870d`).

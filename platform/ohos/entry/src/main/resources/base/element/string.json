@@ -1,0 +1,6 @@
+{
+  "string": [
+    { "name": "end_turn", "value": "End turn" },
+    { "name": "turn_failed", "value": "Could not advance the turn." }
+  ]
+}

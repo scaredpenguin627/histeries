@@ -12,6 +12,7 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+emath = "=0.37.0"
 histeries-ai = { path = "../ai" }
 histeries-hex = { path = "../hex" }
 histeries-net = { path = "../net" }
